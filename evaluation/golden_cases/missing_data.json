@@ -1,0 +1,28 @@
+{
+  "case_id": "missing_data",
+  "purpose": "Prove missing/orphaned data is represented as Unknown rather than defaulted to a value implying false certainty.",
+  "demo_script_scenario": "H",
+  "language": "es-CO",
+  "synthetic_input": {
+    "customer_message": "No reconozco un pago de $300,000 COP de esta semana.",
+    "channel": "chat"
+  },
+  "available_facts": {
+    "transaction_id": "TXN-SYN-0005",
+    "amount": 300000.00,
+    "currency": "COP",
+    "channel": "App",
+    "note": "This transaction references a session_id with no corresponding digital_events rows (a documented dataset characteristic: a small percentage of orphaned foreign keys exist intentionally for testing -- see docs/data-lineage.md section 2)."
+  },
+  "evidence": [
+    {"type": "device_history", "direction": "neutral", "confidence": 0.0, "source": "digital_events: no rows found for the referenced session_id -- represented as Unknown, not as 'no device risk'"},
+    {"type": "merchant_history", "direction": "supports_legitimate", "confidence": 0.5, "source": "merchant_category matches a category the customer has used before"}
+  ],
+  "missing_information": ["Device/session context for this transaction (orphaned reference)", "Customer's location at time of transaction"],
+  "contradictory_evidence": [],
+  "expected_ai_behavior": "Explicitly represent the missing device/session signal as Unknown in the evidence graph; do not silently substitute a default (e.g., treating missing device data as either 'known device' or 'unknown device risk').",
+  "expected_policy_behavior": "Evidence-sufficiency check accounts for the gap; decision proceeds on the evidence that does exist, with the gap stated in the analyst-facing explanation.",
+  "expected_human_involvement": "optional, depending on whether the remaining evidence is sufficient without the missing signal",
+  "prohibited_outcome": "The missing device/session data is silently treated as either strongly supporting or strongly contradicting fraud, or the gap is omitted from the analyst-facing explanation.",
+  "expected_audit_events": ["case.created", "evidence.graph.created", "data_quality.gap_detected", "risk.assessment.completed", "case.resolved"]
+}

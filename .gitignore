@@ -1,0 +1,57 @@
+# Secrets and local configuration — never commit these
+.env
+.env.local
+.env.*.local
+*.pem
+*.key
+credentials.json
+.aws/
+.npmrc
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+.Python
+.venv/
+venv/
+env/
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Node (if a frontend is added)
+node_modules/
+dist/
+build/
+.next/
+.turbo/
+
+# Data — the raw LATAM Bank dataset is large and not meant to live in git;
+# ingestion pulls it from wherever it's placed locally (see docs/data-lineage.md § 1)
+data/raw/
+data/processed/
+*.parquet
+*.csv.gz
+
+# Local databases / dev artifacts
+*.sqlite3
+*.db
+.docker/
+
+# Logs
+*.log
+logs/
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+*.swp
+
+# Claude Code local session state (user-specific, not shared settings)
+.claude/settings.local.json

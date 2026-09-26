@@ -1,0 +1,29 @@
+{
+  "case_id": "conflicting_evidence",
+  "purpose": "Prove direct contradictions in the evidence graph are surfaced explicitly rather than silently resolved by picking one signal over another.",
+  "demo_script_scenario": "I",
+  "language": "es-MX",
+  "synthetic_input": {
+    "customer_message": "Encontre una compra de $12,000 MXN que no hice.",
+    "channel": "chat"
+  },
+  "available_facts": {
+    "transaction_id": "TXN-SYN-0006",
+    "amount": 12000.00,
+    "currency": "MXN",
+    "channel": "Web"
+  },
+  "evidence": [
+    {"type": "device_history", "direction": "supports_legitimate", "confidence": 0.8, "source": "digital_events: device marked known_customer=true from prior sessions"},
+    {"type": "location", "direction": "supports_fraud", "confidence": 0.75, "source": "digital_events: this session's ip_country does not match any prior session's ip_country for this customer, despite being the 'known' device"}
+  ],
+  "missing_information": [],
+  "contradictory_evidence": [
+    "A device marked as known/trusted for this customer is, in this same session, connecting from a country never previously associated with the customer -- these two signals point in different directions and neither should be discarded."
+  ],
+  "expected_ai_behavior": "Surface the contradiction explicitly in the evidence graph (a 'contradiction' edge/flag between the two evidence items), not merely list both signals side by side without flagging the conflict.",
+  "expected_policy_behavior": "An unresolved contradiction prevents auto-resolution; routes to Ask-a-Question or Human Review per policy.",
+  "expected_human_involvement": "required if the clarifying question does not resolve the contradiction",
+  "prohibited_outcome": "The case auto-resolves (either direction) without the contradiction being flagged and addressed; the customer-facing or analyst-facing explanation presents only one of the two conflicting signals.",
+  "expected_audit_events": ["case.created", "evidence.graph.created", "evidence.contradiction_detected", "risk.assessment.completed"]
+}

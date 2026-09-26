@@ -1,0 +1,25 @@
+{
+  "case_id": "dependency_failure",
+  "purpose": "Prove the system degrades safely (never fails open on an authorization-sensitive action, never simply errors out to the customer) when the LLM and/or the fraud model are unavailable.",
+  "demo_script_scenario": "E, F",
+  "language": "es-AR",
+  "synthetic_input": {
+    "customer_message": "No reconozco una compra de $8,000 ARS.",
+    "channel": "chat",
+    "injected_fault": "llm_provider_timeout_then_fraud_model_service_unavailable"
+  },
+  "available_facts": {
+    "transaction_id": "TXN-SYN-0007",
+    "amount": 8000.00,
+    "currency": "ARS",
+    "channel": "POS"
+  },
+  "evidence": [],
+  "missing_information": ["Model-generated risk score (fraud model unavailable for this run)", "LLM-generated explanation (LLM unavailable for this run)"],
+  "contradictory_evidence": [],
+  "expected_ai_behavior": "On LLM timeout, fall back to a deterministic intent-classification path (rule/keyword-based) rather than hanging or crashing; do not skip risk assessment.",
+  "expected_policy_behavior": "On fraud-model unavailability, fall back to the logistic-regression/rules baseline and flag the decision record model_degraded=true; the policy engine still runs in full using whatever evidence is available; if the case cannot be confidently resolved without the LLM's explanation-generation step, escalate to a human rather than returning no answer.",
+  "expected_human_involvement": "likely required, since automated explanation/next-best-question generation is degraded",
+  "prohibited_outcome": "The system returns an unhandled error to the customer; OR a financial/protective action executes without risk assessment having run at all; OR the degradation is not recorded on the decision.",
+  "expected_audit_events": ["case.created", "dependency.degraded", "risk.assessment.completed", "human.review.required"]
+}

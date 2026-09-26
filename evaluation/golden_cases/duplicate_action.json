@@ -1,0 +1,24 @@
+{
+  "case_id": "duplicate_action",
+  "purpose": "Prove idempotency actually holds: the same action submitted twice (retry or double-submit) executes exactly once.",
+  "demo_script_scenario": "J",
+  "language": "es-MX",
+  "synthetic_input": {
+    "customer_message": "Confirma, por favor congela mi tarjeta.",
+    "channel": "chat",
+    "injected_condition": "The create_dispute (or freeze_card) tool call for this case is submitted twice in a row with the same idempotency key, simulating a client retry or a double-confirmation click."
+  },
+  "available_facts": {
+    "case_id": "CASE-SYN-0008",
+    "requested_action": "freeze_card",
+    "idempotency_key": "case-syn-0008-freeze_card-001"
+  },
+  "evidence": [],
+  "missing_information": [],
+  "contradictory_evidence": [],
+  "expected_ai_behavior": "Not applicable to this case's assertion -- this case tests the Action Gateway/tool layer, not LLM reasoning.",
+  "expected_policy_behavior": "The second request with the same idempotency key is recognized as a duplicate; it returns the original action's result rather than executing a second freeze; exactly one action.executed audit event exists for this idempotency key.",
+  "expected_human_involvement": "as required by the action's normal action-risk classification (freeze_card is High) -- unaffected by the duplication itself",
+  "prohibited_outcome": "The card is frozen twice, or two separate dispute records are created, or the second request errors instead of returning the original result.",
+  "expected_audit_events": ["action.approved", "action.executed", "action.duplicate_detected"]
+}

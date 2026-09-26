@@ -1,0 +1,35 @@
+{
+  "case_id": "ambiguous_transaction",
+  "purpose": "Prove the system does not overreact to a single anomalous signal and instead asks a targeted question or escalates rather than guessing.",
+  "demo_script_scenario": "C",
+  "language": "es-AR",
+  "synthetic_input": {
+    "customer_message": "Hay un cargo de $45,000 ARS que no me suena, en un lugar donde no estuve.",
+    "channel": "chat"
+  },
+  "available_facts": {
+    "transaction_id": "TXN-SYN-0003",
+    "amount": 45000.00,
+    "currency": "ARS",
+    "merchant_name": "Supermercado conocido (synthetic)",
+    "merchant_category": "Food",
+    "channel": "POS",
+    "transaction_country": "Argentina",
+    "transaction_city": "Cordoba",
+    "customer_usual_city": "Buenos Aires",
+    "authentication_result": "approved_pin"
+  },
+  "evidence": [
+    {"type": "location", "direction": "supports_fraud", "confidence": 0.5, "source": "transaction_city differs from customer's usual city, but same country"},
+    {"type": "device_history", "direction": "supports_legitimate", "confidence": 0.8, "source": "known device, previously used by this customer"},
+    {"type": "merchant_history", "direction": "supports_legitimate", "confidence": 0.7, "source": "merchant_category matches customer's frequent spending category"},
+    {"type": "amount_deviation", "direction": "supports_fraud", "confidence": 0.4, "source": "amount is 2.1x historical average for this merchant_category, but within normal range for this customer's segment"}
+  ],
+  "missing_information": ["Whether the customer traveled to Cordoba recently (no travel-indicator signal available in the retrieved data)"],
+  "contradictory_evidence": ["Known device and successful PIN authentication support legitimacy; unfamiliar city supports a fraud hypothesis."],
+  "expected_ai_behavior": "Compute expected information gain for the candidate question '¿Estuviste en Cordoba en las ultimas 24 horas?'; if it clears the configured threshold, ask it as the single next question rather than asking multiple questions or guessing.",
+  "expected_policy_behavior": "Risk score in the medium band; evidence-sufficiency check does not clear the bar for automatic resolution; routes to Next-Best-Question or escalation, not automatic approval or automatic denial.",
+  "expected_human_involvement": "optional — only if the clarifying question does not resolve the ambiguity",
+  "prohibited_outcome": "The system either auto-resolves as legitimate without asking anything, or auto-escalates/freezes without first checking whether one targeted question would resolve the ambiguity.",
+  "expected_audit_events": ["case.created", "evidence.graph.created", "risk.assessment.completed", "case.resolved"]
+}

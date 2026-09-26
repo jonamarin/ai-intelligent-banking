@@ -1,0 +1,35 @@
+{
+  "case_id": "legitimate_transaction",
+  "purpose": "Prove the system does not create unnecessary friction for a genuinely legitimate transaction ('Catch More. Flag Less.').",
+  "demo_script_scenario": "A",
+  "language": "es-MX",
+  "synthetic_input": {
+    "customer_message": "No reconozco un cargo de $850 MXN de ayer en mi tarjeta.",
+    "channel": "chat"
+  },
+  "available_facts": {
+    "transaction_id": "TXN-SYN-0001",
+    "amount": 850.00,
+    "currency": "MXN",
+    "merchant_name": "Farmacia del Ahorro (synthetic)",
+    "merchant_category": "Health",
+    "channel": "POS",
+    "transaction_country": "Mexico",
+    "customer_country": "Mexico",
+    "authentication_result": "approved_pin"
+  },
+  "evidence": [
+    {"type": "device_history", "direction": "supports_legitimate", "confidence": 0.9, "source": "digital_events (derived Device entity)"},
+    {"type": "merchant_history", "direction": "supports_legitimate", "confidence": 0.85, "source": "transactions (customer's prior purchases at same merchant_category)"},
+    {"type": "amount_deviation", "direction": "supports_legitimate", "confidence": 0.8, "source": "fraud/risk model feature: amount within 1.2x historical average"},
+    {"type": "location", "direction": "supports_legitimate", "confidence": 0.9, "source": "customer's usual country matches transaction_country"},
+    {"type": "authentication", "direction": "supports_legitimate", "confidence": 0.95, "source": "transactions.response_code: approved PIN authentication"}
+  ],
+  "missing_information": [],
+  "contradictory_evidence": [],
+  "expected_ai_behavior": "Extract intent=unrecognized_transaction and the entities (amount, approximate date); retrieve the transaction and evidence; generate a plain-language explanation citing the known device/merchant/location match.",
+  "expected_policy_behavior": "Risk score in the low band; action-risk of 'explain transaction' is Low; policy allows automatic resolution.",
+  "expected_human_involvement": "none",
+  "prohibited_outcome": "Card is frozen or a dispute is created for this transaction; OR the customer is asked more than one clarifying question before resolution.",
+  "expected_audit_events": ["case.created", "evidence.graph.created", "risk.assessment.completed", "action.executed", "case.resolved"]
+}

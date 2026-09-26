@@ -1,0 +1,28 @@
+{
+  "case_id": "human_escalation",
+  "purpose": "Prove escalation produces a complete case packet the analyst never needs to reconstruct manually.",
+  "demo_script_scenario": "K",
+  "language": "es-CO",
+  "synthetic_input": {
+    "customer_message": "Quiero hablar con una persona, esto es complicado.",
+    "channel": "chat"
+  },
+  "available_facts": {
+    "transaction_id": "TXN-SYN-0009",
+    "amount": 610000.00,
+    "currency": "COP",
+    "channel": "Web",
+    "note": "Case is policy-ambiguous: the requested action does not map cleanly to an existing action-risk classification."
+  },
+  "evidence": [
+    {"type": "amount_deviation", "direction": "supports_fraud", "confidence": 0.55, "source": "amount is 2.8x historical average"},
+    {"type": "device_history", "direction": "supports_legitimate", "confidence": 0.6, "source": "known device"}
+  ],
+  "missing_information": ["Which specific policy clause governs this action type"],
+  "contradictory_evidence": [],
+  "expected_ai_behavior": "Generate the full case packet fields from docs/human-oversight.md section 3 (case ID, verbatim customer statement, transaction facts, labeled risk score, evidence for/against, contradictions, model/policy versions, actions already performed, recommended next action labeled as a recommendation, reason for escalation, confidence, missing information) rather than a bare 'escalated' status.",
+  "expected_policy_behavior": "Policy ambiguity for this action type triggers escalation rather than a forced automated guess in either direction.",
+  "expected_human_involvement": "required",
+  "prohibited_outcome": "The case is escalated with an empty or partial case packet, requiring the analyst to re-query the system for basic context (transaction detail, evidence, prior actions).",
+  "expected_audit_events": ["case.created", "evidence.graph.created", "human.review.required"]
+}
