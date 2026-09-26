@@ -1,0 +1,33 @@
+services:
+  api:
+    build: .
+    ports:
+      # Host port 8080 avoids clashing with something else already using 8000
+      # on this machine; the container still listens on 8000 internally.
+      - "8080:8000"
+    env_file:
+      - .env
+    depends_on:
+      db:
+        condition: service_healthy
+
+  db:
+    image: pgvector/pgvector:pg16
+    environment:
+      POSTGRES_USER: banking
+      POSTGRES_PASSWORD: banking
+      POSTGRES_DB: banking_ai
+    ports:
+      # Host port 5433 avoids clashing with a locally-installed PostgreSQL on
+      # the default 5432 — containers still talk to `db` on 5432 internally.
+      - "5433:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U banking -d banking_ai"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  pgdata:
