@@ -38,8 +38,10 @@ Format and layout as downloaded:
   **not** synced (appears to be a redundant snapshot; re-evaluate only if the primary `data/`
   prefix is found to be incomplete or stale).
 
-Ingestion into PostgreSQL (Phase 3, `docs/implementation-roadmap.md`) is still `PLANNED` — the
-raw files being present locally unblocks that phase but does not itself constitute ingestion.
+Ingestion into PostgreSQL (Phase 3, `docs/implementation-roadmap.md`) is **implemented and
+verified** for a bounded recent-date sample (`src/ingestion/`, `docs/project-status.md` § Phase
+3 detail) — a `--full` run of the entire dataset has not yet been done in this environment
+(`src/ingestion/README.md` § Sample vs. full mode).
 
 ## 2. Documented data-quality characteristics (from the source docs — not this project's
    finding)
@@ -96,9 +98,17 @@ easy to apply during implementation.
 
 ## 7. Quality checks
 
-`PLANNED` (Phase 3): schema validation, null-rate checks against the documented ~5% baseline
-(alert if a field's null rate deviates sharply from that baseline, which would suggest an
-ingestion bug rather than expected data quality), duplicate detection against the documented
-~2% baseline, referential-integrity checks with tolerance for the documented small orphan
-rate, timestamp/currency plausibility checks. A data-quality report format is `TBD` until this
-phase starts.
+**Implemented** (`src/ingestion/`, Phase 3 — see `docs/project-status.md` § Phase 3 detail and
+`src/ingestion/README.md`): duplicate detection (deduplicated on primary key per load, plus an
+unrestricted `ON CONFLICT DO NOTHING` at the database level since the documented ~2% duplicate
+rate also shows up on secondary unique columns, not just primary keys — observed directly on
+`products.product_number`), referential-integrity checks with orphaned rows dropped and
+counted rather than crashing the load, and null-rate checks flagged when a column's actual
+rate exceeds 2x the documented ~5% baseline. Schema-required (NOT NULL) columns that the real
+data violates anyway are handled explicitly: fall back to a declared default, or drop and count
+the row — discovered to be a real, not hypothetical, issue
+(`call_transcripts.duration_seconds`, documented NOT NULL, was null in 12.2% of one sample).
+Timestamp/currency plausibility checks beyond type coercion are not implemented — `PLANNED`,
+revisit if Phase 4 feature engineering needs them. The data-quality report format is a JSON
+file per run (`src/ingestion/quality.py`), example committed at
+`data/reports/ingestion_report.json`.

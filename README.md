@@ -5,15 +5,17 @@ dispute intake and fraud investigation** for a synthetic LATAM retail bank. Buil
 Factored Datathon 2026 (`project_presentation.txt`), following the technical vision in
 `prompt.md`.
 
-> **Status: Phase 2 (Domain) complete.** This repository contains the project's Claude Code
+> **Status: Phase 3 (Ingestion) complete.** This repository contains the project's Claude Code
 > operating system — architecture, domain model, security model, guardrails, evaluation plan,
 > and a phased implementation roadmap — a working application foundation (FastAPI health
-> check, structured/redacted logging, config, Docker, CI), and now a complete, migrated
-> PostgreSQL schema for every entity in `docs/domain-model.md`. **No ingestion pipeline (raw
-> CSVs aren't loaded yet), no fraud model, no orchestration, no policy engine** — those are
-> Phases 3+. See `docs/project-status.md` for the authoritative, up-to-date state. Every claim
-> in this README is labeled `Implemented`, `Planned`, `Partial`, or `Mocked` — treat anything
-> unlabeled as aspirational.
+> check, structured/redacted logging, config, Docker, CI), a complete, migrated PostgreSQL
+> schema for every entity in `docs/domain-model.md`, and now a verified ingestion pipeline that
+> has actually loaded real (synthetic) data into it. **A bounded recent-date sample is loaded,
+> not the full ~19M-row dataset** (the dev machine has too little free RAM for that right now —
+> see `src/ingestion/README.md`); **no fraud model, no orchestration, no policy engine** — those
+> are Phases 4+. See `docs/project-status.md` for the authoritative, up-to-date state. Every
+> claim in this README is labeled `Implemented`, `Planned`, `Partial`, or `Mocked` — treat
+> anything unlabeled as aspirational.
 
 ## 1. Problem
 
@@ -72,11 +74,12 @@ CLAUDE.md                    Persistent Claude Code operating contract (start he
 docs/                         Architecture, domain model, security, evaluation, roadmap, status
 .claude/                      Rules, skills, agents, hooks, settings for Claude Code sessions
 evaluation/golden_cases/      Synthetic scenario fixtures (schema + 10 cases)
-src/                           FastAPI app, config/logging, domain models (implemented);
-                                other subpackages are skeletons documenting their future phase
-alembic/                       Migrations (implemented) — 11 tables + 1 link table
-tests/unit/                   17 passing unit tests
+src/                           FastAPI app, config/logging, domain models, ingestion pipeline
+                                (implemented); other subpackages are skeletons for future phases
+alembic/                       Migrations (implemented) — 17 tables + 1 link table
+tests/unit/                   20 passing unit tests
 data/raw/                      Raw LATAM Bank dataset (git-ignored, ~5.0 GB — not in git)
+data/reports/                  Ingestion data-quality reports (committed — small aggregate stats)
 prompt.md                     Original master prompt (historical design input)
 project_presentation.txt      Competition brief (constraints, judging criteria)
 LATAM_Bank_*.pdf               Source dataset documentation
@@ -93,23 +96,26 @@ Verified working (`docs/project-status.md`):
 git clone <repo> && cd ai-intelligent-banking
 cp .env.example .env                  # fill in real values only if you need them; mock LLM mode needs none
 uv sync                               # installs dependencies into .venv
-uv run pytest                         # 17/17 passing (offline — model tests use in-memory SQLite)
+uv run pytest                         # 20/20 passing (offline — model/ingestion tests use in-memory SQLite / fixtures)
 uv run ruff check . && uv run mypy src   # lint + typecheck, both clean
 docker compose up -d                  # api on :8080, db (pgvector/pg16) on :5433
 curl http://localhost:8080/api/v1/health
 
-# apply the domain schema (11 tables) to the running db — see CLAUDE.md § 9 for why
+# apply the schema (17 tables) to the running db — see CLAUDE.md § 9 for why
 # DATABASE_URL is overridden here (the .env default targets Docker's internal network)
 DATABASE_URL="postgresql+psycopg://banking:banking@localhost:5433/banking_ai" uv run alembic upgrade head
+
+# load a bounded recent-date sample of the real dataset (src/ingestion/README.md)
+DATABASE_URL="postgresql+psycopg://banking:banking@localhost:5433/banking_ai" uv run python -m src.ingestion.run --sample-days 3
 
 docker compose down
 ```
 
-`make install|test|lint|typecheck|docker-up|docker-down` wrap the same commands, but **`make`
-itself was not installed on the machine this was verified on** — install it if you want the
-shorter form, or just use the `uv`/`docker` commands above directly.
-Seeding real data, running the API against it, running evaluation, and running the demo are
-all `Planned` — they need Phase 3 (ingestion) first; the schema they'll load into is now real.
+`make install|test|lint|typecheck|docker-up|docker-down|seed` wrap the same commands (`seed`
+now runs the ingestion command above), but **`make` itself was not installed on the machine
+this was verified on** — install it if you want the shorter form, or just use the `uv`/`docker`
+commands directly. Running the API against the loaded data, evaluation, and the demo are all
+`Planned` — they need Phase 4+ (fraud model, orchestration, policy engine) first.
 
 ## 7. Demo scenarios — `Planned`
 

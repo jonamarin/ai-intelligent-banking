@@ -4,24 +4,26 @@ Owns: verified current implementation state. This document must never represent 
 functionality as implemented. Update it whenever a meaningful implementation phase
 (`docs/implementation-roadmap.md`) completes, changes, or blocks.
 
-**Last meaningful update:** 2026-09-25 (Phase 2 — Domain implemented and verified).
+**Last meaningful update:** 2026-09-25 (Phase 3 — Ingestion implemented and verified).
 **Last validation:** 2026-09-25 — actually run, not just inspected: `uv run ruff check .`
-(clean), `uv run mypy src` (clean, 29 files), `uv run pytest` (17/17 passed),
-`alembic revision --autogenerate` against a live `docker compose` Postgres (correctly detected
-all 12 tables), `alembic upgrade head` (applied cleanly — `\dt` confirmed all 12 tables + `
-alembic_version`), `alembic downgrade -1` then `upgrade head` again (round-trip reversibility
-confirmed), `alembic check` after a model tweak (confirmed zero schema drift).
+(clean), `uv run mypy src` (clean, 39 files), `uv run pytest` (20/20 passed), a full
+`--sample-days 3` ingestion run against a live `docker compose` Postgres with the resulting
+report's per-table counts cross-checked against `SELECT count(*)` on every one of the 8 loaded
+tables — **exact match on every table** (`docs/data-lineage.md` § 7, § Phase 3 detail below),
+plus `alembic check` (zero schema drift) after adding the 5 new source-table models.
 
 ## Current phase
 
-Phase 2 (Domain) complete. This repository now contains: the original master prompt
+Phase 3 (Ingestion) complete. This repository now contains: the original master prompt
 (`prompt.md`), the competition brief (`project_presentation.txt`), the LATAM Bank dataset
 documentation (two PDFs at the repository root), the raw LATAM Bank dataset itself
 (`data/raw/`, git-ignored, ~5.0 GB — `docs/data-lineage.md` § 1), the Claude Code operating
 system (`CLAUDE.md`, `docs/`, `.claude/`, `evaluation/golden_cases/`), a working application
-foundation (Phase 1), and now a complete, migrated domain schema (Phase 2).
-**No ingestion pipeline yet (raw CSVs are not loaded into these tables), no fraud model, no
-orchestration, no policy engine — those are Phases 3+.**
+foundation (Phase 1), a complete, migrated domain schema (Phase 2), and now a working,
+verified ingestion pipeline that has actually loaded real (synthetic) data into that schema
+(Phase 3).
+**No fraud model, no orchestration, no policy engine — those are Phases 4+. Only a bounded
+recent-date sample has been loaded, not the full ~19M-row dataset — see § Phase 3 detail.**
 
 ## Status by roadmap phase (`docs/implementation-roadmap.md`)
 
@@ -29,7 +31,7 @@ orchestration, no policy engine — those are Phases 3+.**
 |---|---|
 | 1 — Foundation | IMPLEMENTED — see § Phase 1 detail below |
 | 2 — Domain | IMPLEMENTED — see § Phase 2 detail below |
-| 3 — Synthetic Data / Ingestion | NOT_IMPLEMENTED (raw dataset files now present locally at `data/raw/` — see `docs/data-lineage.md` § 1 — but no ingestion pipeline/code exists yet) |
+| 3 — Synthetic Data / Ingestion | IMPLEMENTED — see § Phase 3 detail below (sample-mode verified; `--full` not yet run in this environment, see `src/ingestion/README.md`) |
 | 4 — Fraud ML | NOT_IMPLEMENTED |
 | 5 — Evidence Engine | NOT_IMPLEMENTED |
 | 6 — AI Agent | NOT_IMPLEMENTED |
@@ -141,7 +143,59 @@ orchestration, no policy engine — those are Phases 3+.**
   linked to both `Customer` and `Product`, `Evidence.direction` rejecting an invalid value,
   `Decision` requiring a non-null `policy_version`, and `HumanReview` staying a structurally
   distinct record from the `Decision` it reviews.
-- 17 unit tests total (10 from Phase 1 + 7 new), all passing.
+- 17 unit tests total (10 from Phase 1 + 7 from Phase 2), all passing.
+
+### Phase 3 detail
+
+- 5 new source-table SQLAlchemy models mirroring the raw dataset schema exactly
+  (`CallCenterInteraction`, `CallTranscript`, `Complaint`, `DigitalEvent`, `ExchangeRate`),
+  distinct from (but feeding into, in later phases) the curated `CustomerInteraction` domain
+  entity from Phase 2 — see each model's docstring for the distinction. A second Alembic
+  migration (`alembic/versions/b4ecd51894b0_add_source_ingestion_tables.py`) added them;
+  verified the same way as Phase 1's migration (applied, reversible, `alembic check` clean).
+- `src/ingestion/`: a generic CSV → Postgres loader (`loader.py`), Hive-partition discovery
+  with a bounded recent-date sample or full-history mode (`partitions.py`), a data-quality
+  report (`quality.py`), and a CLI orchestrator (`run.py`) loading, in FK-dependency order:
+  `customers`, `products`, `daily_exchange_rates` (independent) → `transactions`,
+  `call_center_interactions` → `call_transcripts`, `complaints` → `digital_events`. `branches`,
+  `service_agents`, `marketing_campaigns`, `campaign_sends`, `satisfaction_surveys` are
+  deliberately skipped (out of this workflow's scope, `docs/data-dictionary.md`).
+- Handles the dataset's documented data-quality characteristics as real, tested code, not just
+  documentation: duplicate rows (an **unrestricted** `ON CONFLICT DO NOTHING` — a real
+  `products.product_number` collision across different `product_id`s was hit and handled during
+  verification, not merely anticipated), orphaned foreign keys (dropped + counted), and NULLs in
+  columns the schema declares NOT NULL but the real data violates anyway (a real
+  `call_transcripts.duration_seconds` violation was hit and handled: 71/583 rows in one 3-day
+  sample) — see `src/ingestion/README.md` for the full list and the exact counts observed.
+- **A real bug was found and fixed during verification, not just written and trusted:** pandas
+  ≥ 3.0's new default string dtype represents missing values as `float('nan')`, not `None`, and
+  a naive `value is None` null-check (the initially-written version) silently treated legitimate
+  NULLs in *nullable* foreign-key columns as *orphaned* references, incorrectly dropping 100% of
+  the `complaints` table's rows in one verification run. Caught by cross-checking the ingestion
+  report's counts against the live database's actual row counts — not by trusting a "0 errors,
+  exit code 0" run. Fixed by routing every null check through `pd.isna` and normalizing to real
+  `None` once, at record-build time (`src/ingestion/loader.py`'s `_none_if_na`); pinned with
+  `tests/unit/test_ingestion_loader.py` so a future pandas upgrade can't reintroduce it silently.
+- A second real bug, also caught by verification rather than assumed away: `cursor.rowcount` is
+  `-1` (driver-reported "unknown") for a multi-row `VALUES (...), (...)` insert under psycopg —
+  the loader initially reported negative "rows loaded" counts. Fixed with `RETURNING` +
+  counting the returned rows, which is exact regardless of driver rowcount support.
+- **Verified with a full clean run** (`--sample-days 3`, after truncating every table): the
+  report's per-table row counts were cross-checked against `SELECT count(*)` on all 8 loaded
+  tables in the live database — exact match on every one: `customers` 150,000,
+  `products` 399,994 (6 correctly skipped for a real `product_number` duplicate),
+  `daily_exchange_rates` 13,164, `transactions` 14,659, `call_center_interactions` 2,239,
+  `call_transcripts` 512 (71 correctly dropped), `complaints` 217, `digital_events` 41,295.
+  Report committed at `data/reports/ingestion_report.json`.
+- **Not yet run: `--full` mode** (the entire ~19M-row dataset). The development machine this
+  was built and verified on has very little free RAM (observed as low as ~1.5 GB of 16 GB
+  total free); even the bounded 3-day sample run was killed by out-of-memory conditions twice
+  before a memory-usage fix (removing an unnecessary whole-frame `.astype(object)` call) and a
+  smaller sample got it through cleanly. `--full` — especially `digital_events` at 10M rows —
+  needs meaningfully more headroom than was available here. See `src/ingestion/README.md` §
+  Sample vs. full mode for what to check before attempting it.
+- 3 new regression tests (`tests/unit/test_ingestion_loader.py`) pin the pandas-NA-handling fix.
+  20 unit tests total (10 Phase 1 + 7 Phase 2 + 3 Phase 3), all passing.
 
 ## In progress
 
@@ -159,6 +213,10 @@ Everything under "Status by roadmap phase" marked `NOT_IMPLEMENTED` above.
 - Host ports in `docker-compose.yml` are remapped to 8080 (api) and 5433 (db) because 8000 and
   5432 were already in use by other software on the development machine. Adjust back to
   8000/5432 if that's not the case in your environment.
+- Only a bounded recent-date sample of the dataset has been ingested (Phase 3,
+  `--sample-days 3` verified) — the full ~19M-row dataset has not been loaded. The development
+  machine has very little free RAM available; a `--full` ingestion run needs more headroom
+  than was available here — see `src/ingestion/README.md` § Sample vs. full mode.
 - No frontend framework has been chosen (`docs/architecture.md` § 15, `OPEN QUESTION`).
 - No business-approved risk thresholds, cost coefficients, or approval-matrix cells exist
   anywhere in this project — every number in `docs/decision-policy.md` and

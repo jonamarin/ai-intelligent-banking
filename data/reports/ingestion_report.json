@@ -1,0 +1,241 @@
+{
+  "run_started_at": "2026-09-26T04:13:02.403895+00:00",
+  "mode": "sample",
+  "sample_days": 3,
+  "tables": [
+    {
+      "table_name": "customers",
+      "source_row_count": 150000,
+      "duplicates_removed": 0,
+      "orphaned_fk_rows_skipped": {},
+      "null_rate_by_column": {
+        "email": 0.019893333333333332,
+        "mobile_phone": 0.03138,
+        "landline_phone": 0.5003533333333333,
+        "address": 0.049133333333333334,
+        "postal_code": 0.10029333333333333,
+        "detected_accent": 0.29878,
+        "credit_score": 0.14994666666666667,
+        "estimated_monthly_income": 0.20022,
+        "occupation": 0.10026,
+        "marital_status": 0.0797,
+        "education_level": 0.11968
+      },
+      "rows_loaded": 150000,
+      "elapsed_seconds": 249.7960000000894,
+      "required_field_null_rows_dropped": 0,
+      "flags": [
+        "column 'landline_phone' null rate 50.0% exceeds 2.0x the documented ~5% baseline",
+        "column 'postal_code' null rate 10.0% exceeds 2.0x the documented ~5% baseline",
+        "column 'detected_accent' null rate 29.9% exceeds 2.0x the documented ~5% baseline",
+        "column 'credit_score' null rate 15.0% exceeds 2.0x the documented ~5% baseline",
+        "column 'estimated_monthly_income' null rate 20.0% exceeds 2.0x the documented ~5% baseline",
+        "column 'occupation' null rate 10.0% exceeds 2.0x the documented ~5% baseline",
+        "column 'education_level' null rate 12.0% exceeds 2.0x the documented ~5% baseline"
+      ]
+    },
+    {
+      "table_name": "products",
+      "source_row_count": 400000,
+      "duplicates_removed": 0,
+      "orphaned_fk_rows_skipped": {},
+      "null_rate_by_column": {
+        "credit_limit": 0.6867075,
+        "interest_rate": 0.100165,
+        "expiration_date": 0.6670975,
+        "days_past_due": 0.686625,
+        "last_transaction_date": 0.2356925
+      },
+      "rows_loaded": 399994,
+      "elapsed_seconds": 427.01600000006147,
+      "required_field_null_rows_dropped": 0,
+      "flags": [
+        "column 'credit_limit' null rate 68.7% exceeds 2.0x the documented ~5% baseline",
+        "column 'interest_rate' null rate 10.0% exceeds 2.0x the documented ~5% baseline",
+        "column 'expiration_date' null rate 66.7% exceeds 2.0x the documented ~5% baseline",
+        "column 'days_past_due' null rate 68.7% exceeds 2.0x the documented ~5% baseline",
+        "column 'last_transaction_date' null rate 23.6% exceeds 2.0x the documented ~5% baseline"
+      ]
+    },
+    {
+      "table_name": "daily_exchange_rates",
+      "source_row_count": 13164,
+      "duplicates_removed": 0,
+      "orphaned_fk_rows_skipped": {},
+      "null_rate_by_column": {},
+      "rows_loaded": 13164,
+      "elapsed_seconds": 4.952999999979511,
+      "required_field_null_rows_dropped": 0,
+      "flags": []
+    },
+    {
+      "table_name": "transactions",
+      "source_row_count": 14659,
+      "duplicates_removed": 0,
+      "orphaned_fk_rows_skipped": {},
+      "null_rate_by_column": {
+        "transaction_category": 0.6184596493621666,
+        "amount_usd": 0.5652500170543693,
+        "branch_id": 0.6855856470427724,
+        "merchant_name": 0.7762466743979808,
+        "merchant_category": 0.77597380448871,
+        "transaction_city": 0.10109830138481479,
+        "response_code": 0.052118152670714235,
+        "fraud_score": 0.19878572890374513,
+        "latitude": 0.8082406712599768,
+        "longitude": 0.8095368033290129
+      },
+      "rows_loaded": 14659,
+      "elapsed_seconds": 23.235000000102445,
+      "required_field_null_rows_dropped": 0,
+      "flags": [
+        "column 'transaction_category' null rate 61.8% exceeds 2.0x the documented ~5% baseline",
+        "column 'amount_usd' null rate 56.5% exceeds 2.0x the documented ~5% baseline",
+        "column 'branch_id' null rate 68.6% exceeds 2.0x the documented ~5% baseline",
+        "column 'merchant_name' null rate 77.6% exceeds 2.0x the documented ~5% baseline",
+        "column 'merchant_category' null rate 77.6% exceeds 2.0x the documented ~5% baseline",
+        "column 'transaction_city' null rate 10.1% exceeds 2.0x the documented ~5% baseline",
+        "column 'fraud_score' null rate 19.9% exceeds 2.0x the documented ~5% baseline",
+        "column 'latitude' null rate 80.8% exceeds 2.0x the documented ~5% baseline",
+        "column 'longitude' null rate 81.0% exceeds 2.0x the documented ~5% baseline"
+      ]
+    },
+    {
+      "table_name": "call_center_interactions",
+      "source_row_count": 2239,
+      "duplicates_removed": 0,
+      "orphaned_fk_rows_skipped": {},
+      "null_rate_by_column": {
+        "duration_seconds": 0.1299687360428763,
+        "wait_time_seconds": 0.29388119696292986,
+        "customer_detected_accent": 0.30906654756587765,
+        "agent_used_accent": 0.30906654756587765,
+        "mentioned_products": 0.5873157659669496
+      },
+      "rows_loaded": 2239,
+      "elapsed_seconds": 3.202999999979511,
+      "required_field_null_rows_dropped": 0,
+      "flags": [
+        "column 'duration_seconds' null rate 13.0% exceeds 2.0x the documented ~5% baseline",
+        "column 'wait_time_seconds' null rate 29.4% exceeds 2.0x the documented ~5% baseline",
+        "column 'customer_detected_accent' null rate 30.9% exceeds 2.0x the documented ~5% baseline",
+        "column 'agent_used_accent' null rate 30.9% exceeds 2.0x the documented ~5% baseline",
+        "column 'mentioned_products' null rate 58.7% exceeds 2.0x the documented ~5% baseline"
+      ]
+    },
+    {
+      "table_name": "call_transcripts",
+      "source_row_count": 583,
+      "duplicates_removed": 0,
+      "orphaned_fk_rows_skipped": {},
+      "null_rate_by_column": {
+        "detected_accent": 0.37735849056603776,
+        "accent_confidence": 0.0823327615780446,
+        "detected_keywords": 0.03945111492281304,
+        "mentioned_entities": 0.09777015437392796,
+        "detected_intents": 0.06174957118353345,
+        "audio_quality": 0.060034305317324184,
+        "duration_seconds": 0.12178387650085763
+      },
+      "rows_loaded": 512,
+      "elapsed_seconds": 1.25,
+      "required_field_null_rows_dropped": 71,
+      "flags": [
+        "column 'detected_accent' null rate 37.7% exceeds 2.0x the documented ~5% baseline",
+        "column 'duration_seconds' null rate 12.2% exceeds 2.0x the documented ~5% baseline",
+        "71 rows (12.2%) dropped for a NULL in a schema-required column - exceeds the documented ~5% null baseline even for supposedly mandatory fields"
+      ]
+    },
+    {
+      "table_name": "complaints",
+      "source_row_count": 217,
+      "duplicates_removed": 0,
+      "orphaned_fk_rows_skipped": {},
+      "null_rate_by_column": {
+        "subcategory": 0.09216589861751152,
+        "affected_product_id": 0.39631336405529954,
+        "related_branch_id": 0.7373271889400922,
+        "origin_interaction_id": 1.0,
+        "claimed_amount": 0.663594470046083,
+        "currency": 0.6451612903225806,
+        "assigned_agent_id": 0.391705069124424,
+        "assignment_date": 0.3686635944700461,
+        "first_response_date": 0.423963133640553,
+        "resolution_date": 0.783410138248848,
+        "closing_date": 0.9723502304147466,
+        "resolution_days": 0.783410138248848,
+        "resolution": 0.783410138248848,
+        "compensation_granted": 0.9493087557603687,
+        "resolution_satisfaction": 0.9723502304147466
+      },
+      "rows_loaded": 217,
+      "elapsed_seconds": 2.3910000000614673,
+      "required_field_null_rows_dropped": 0,
+      "flags": [
+        "column 'affected_product_id' null rate 39.6% exceeds 2.0x the documented ~5% baseline",
+        "column 'related_branch_id' null rate 73.7% exceeds 2.0x the documented ~5% baseline",
+        "column 'origin_interaction_id' null rate 100.0% exceeds 2.0x the documented ~5% baseline",
+        "column 'claimed_amount' null rate 66.4% exceeds 2.0x the documented ~5% baseline",
+        "column 'currency' null rate 64.5% exceeds 2.0x the documented ~5% baseline",
+        "column 'assigned_agent_id' null rate 39.2% exceeds 2.0x the documented ~5% baseline",
+        "column 'assignment_date' null rate 36.9% exceeds 2.0x the documented ~5% baseline",
+        "column 'first_response_date' null rate 42.4% exceeds 2.0x the documented ~5% baseline",
+        "column 'resolution_date' null rate 78.3% exceeds 2.0x the documented ~5% baseline",
+        "column 'closing_date' null rate 97.2% exceeds 2.0x the documented ~5% baseline",
+        "column 'resolution_days' null rate 78.3% exceeds 2.0x the documented ~5% baseline",
+        "column 'resolution' null rate 78.3% exceeds 2.0x the documented ~5% baseline",
+        "column 'compensation_granted' null rate 94.9% exceeds 2.0x the documented ~5% baseline",
+        "column 'resolution_satisfaction' null rate 97.2% exceeds 2.0x the documented ~5% baseline"
+      ]
+    },
+    {
+      "table_name": "digital_events",
+      "source_row_count": 41295,
+      "duplicates_removed": 0,
+      "orphaned_fk_rows_skipped": {},
+      "null_rate_by_column": {
+        "customer_id": 0.23494369778423538,
+        "platform": 0.049594381886426925,
+        "browser": 0.6259595592686766,
+        "app_version": 0.4226661823465311,
+        "page_url": 0.05039351011018283,
+        "page_title": 0.04903741373047584,
+        "action": 0.09795374742704928,
+        "element_id": 0.1505266981474755,
+        "product_id": 0.9091415425596319,
+        "event_value": 0.9493643298220124,
+        "duration_seconds": 0.6285991040077491,
+        "ip_address": 0.04911006175081729,
+        "ip_city": 0.2775638697178835,
+        "referrer": 0.933018525245187,
+        "utm_source": 0.9467974331032812,
+        "utm_medium": 0.946434193001574,
+        "utm_campaign": 0.946627921055818
+      },
+      "rows_loaded": 41295,
+      "elapsed_seconds": 70.125,
+      "required_field_null_rows_dropped": 0,
+      "flags": [
+        "column 'customer_id' null rate 23.5% exceeds 2.0x the documented ~5% baseline",
+        "column 'browser' null rate 62.6% exceeds 2.0x the documented ~5% baseline",
+        "column 'app_version' null rate 42.3% exceeds 2.0x the documented ~5% baseline",
+        "column 'element_id' null rate 15.1% exceeds 2.0x the documented ~5% baseline",
+        "column 'product_id' null rate 90.9% exceeds 2.0x the documented ~5% baseline",
+        "column 'event_value' null rate 94.9% exceeds 2.0x the documented ~5% baseline",
+        "column 'duration_seconds' null rate 62.9% exceeds 2.0x the documented ~5% baseline",
+        "column 'ip_city' null rate 27.8% exceeds 2.0x the documented ~5% baseline",
+        "column 'referrer' null rate 93.3% exceeds 2.0x the documented ~5% baseline",
+        "column 'utm_source' null rate 94.7% exceeds 2.0x the documented ~5% baseline",
+        "column 'utm_medium' null rate 94.6% exceeds 2.0x the documented ~5% baseline",
+        "column 'utm_campaign' null rate 94.7% exceeds 2.0x the documented ~5% baseline"
+      ]
+    }
+  ],
+  "skipped_tables": [
+    "branches",
+    "service_agents",
+    "marketing_campaigns",
+    "campaign_sends",
+    "satisfaction_surveys"
+  ]
+}

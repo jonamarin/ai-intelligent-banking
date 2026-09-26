@@ -106,24 +106,27 @@ evaluation/
 src/                           ← application code (Phase 1+, docs/project-status.md)
   config/                      ← settings + structured logging (implemented)
   api/                         ← FastAPI app, health check, error handling (implemented)
-  models/                      ← SQLAlchemy models + Pydantic schemas (implemented, Phase 2)
+  models/                      ← SQLAlchemy models + Pydantic schemas (implemented, Phase 2-3)
+  ingestion/                    ← CSV -> Postgres loader + data-quality report (implemented, Phase 3)
   agents/orchestration/policies/tools/evidence/retrieval/security/monitoring/
                                ← package skeletons only; each documents which phase fills it in
 
-alembic/                       ← migrations (implemented, Phase 2) — env.py reads
+alembic/                       ← migrations (implemented, Phase 2-3) — env.py reads
                                   src.config.settings + src.models.Base.metadata
-tests/unit/                    ← 17 passing tests (10 Phase 1 + 7 Phase 2)
+tests/unit/                    ← 20 passing tests (10 Phase 1 + 7 Phase 2 + 3 Phase 3)
 pyproject.toml, uv.lock, Dockerfile, docker-compose.yml, Makefile,
 .github/workflows/ci.yml, .pre-commit-config.yaml, .env.example
                                ← Phase 1 foundation tooling
 ```
 
-Repository initialization, Phase 1 — Foundation, and Phase 2 — Domain are all done
-(`docs/project-status.md`). The fraud model, orchestration, the policy engine, `infrastructure/
-terraform/`, and everything else in `docs/implementation-roadmap.md` Phases 3+ do not exist
-yet — do not create empty placeholder directories for a phase before it actually starts; the
-existing `src/` subpackages that are still just markers document this explicitly in their own
-docstrings.
+Repository initialization, Phase 1 — Foundation, Phase 2 — Domain, and Phase 3 — Ingestion
+(sample mode) are all done (`docs/project-status.md`). The fraud model, orchestration, the
+policy engine, `infrastructure/terraform/`, and everything else in
+`docs/implementation-roadmap.md` Phases 4+ do not exist yet — do not create empty placeholder
+directories for a phase before it actually starts; the existing `src/` subpackages that are
+still just markers document this explicitly in their own docstrings. A `--full` ingestion run
+(the entire ~19M-row dataset, not just the verified recent-date sample) has also not been done
+— see `src/ingestion/README.md` § Sample vs. full mode before attempting it.
 
 ## 5. Confirmed technology stack (planned, not yet implemented)
 
@@ -212,6 +215,10 @@ docker compose down     # tear down
 DATABASE_URL="postgresql+psycopg://banking:banking@localhost:5433/banking_ai" uv run alembic upgrade head
 DATABASE_URL="postgresql+psycopg://banking:banking@localhost:5433/banking_ai" uv run alembic revision --autogenerate -m "..."
 DATABASE_URL="postgresql+psycopg://banking:banking@localhost:5433/banking_ai" uv run alembic check   # fails if models drifted from the last migration
+
+# Ingestion (docs/project-status.md § Phase 3 detail; src/ingestion/README.md) — same
+# DATABASE_URL override, run after `alembic upgrade head`:
+DATABASE_URL="postgresql+psycopg://banking:banking@localhost:5433/banking_ai" uv run python -m src.ingestion.run --sample-days 3
 ```
 
 `Makefile` mirrors these as `make install|lint|typecheck|test|docker-up|docker-down`, but

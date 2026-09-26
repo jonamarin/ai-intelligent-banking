@@ -36,22 +36,30 @@ every entity in `docs/domain-model.md` § 3 has a corresponding, migrated table.
 `Merchant` are derived, not source tables — see `docs/data-dictionary.md`); keep derivation
 logic explicit rather than pretending they're dimension tables.
 
-## Phase 3 — Synthetic Data / Ingestion
+## Phase 3 — Synthetic Data / Ingestion — `IMPLEMENTED` (sample mode; see docs/project-status.md)
 
 **Objective:** the LATAM Bank dataset is loaded and usable. **Scope:** ingestion pipeline for
-the tables listed in `docs/data-dictionary.md` § Tables not used excluded initially;
-data-quality validation per `docs/data-lineage.md` § 7; a data-quality report. **Deliverables:**
-`customers`, `products`, `branches`, `service_agents`, `transactions`,
-`call_center_interactions`, `call_transcripts`, `digital_events`, `complaints`,
-`daily_exchange_rates` loaded into PostgreSQL; data-quality report generated.
-**Dependencies:** Phase 2; the raw dataset files must be obtained (not present in this
-repository as of this writing). **Tests:** schema validation, duplicate/null-rate checks
-against the documented baselines (`docs/data-lineage.md` § 2). **Security:** confirm no real
-data snuck into the "synthetic" dataset before loading (sanity check, not expected to find
-anything). **Exit criteria:** the fraud model (Phase 4) can query real feature inputs from the
-loaded tables. **Risks:** the ~19M-row scale may be too large for a laptop-only Postgres for
-local dev — consider a sampled subset for local development, full set for any batch
-evaluation; document the choice if made.
+the tables this workflow actually uses, per `docs/data-dictionary.md` § Tables not used
+(`branches`, `service_agents`, `marketing_campaigns`, `campaign_sends`,
+`satisfaction_surveys` excluded — not just "initially," permanently, unless a later phase
+changes scope); data-quality validation per `docs/data-lineage.md` § 7; a data-quality report.
+**Deliverables:** `customers`, `products`, `daily_exchange_rates`, `transactions`,
+`call_center_interactions`, `call_transcripts`, `complaints`, `digital_events` loaded into
+PostgreSQL; data-quality report generated. **Delivered as:** `src/ingestion/` (loader,
+partition discovery, quality report, CLI) — see `src/ingestion/README.md` and
+`docs/project-status.md` § Phase 3 detail for exactly what was verified and how.
+**Dependencies:** Phase 2; the raw dataset files must be obtained (done —
+`docs/data-lineage.md` § 1). **Tests:** schema validation, duplicate/null-rate checks
+against the documented baselines (`docs/data-lineage.md` § 2) — implemented; plus 3 regression
+tests for a real pandas-version NA-handling bug found during verification
+(`tests/unit/test_ingestion_loader.py`). **Security:** confirmed no real data in the dataset
+before loading (sanity check; found nothing, as expected). **Exit criteria:** the fraud model
+(Phase 4) can query real feature inputs from the loaded tables — met for the sample-mode data
+currently loaded. **Risks:** confirmed, not just anticipated — the ~19M-row scale (and this
+development machine's limited free RAM) made even a 3-day sample run get killed by
+out-of-memory conditions twice before a memory-usage fix; `--full` has not been attempted here
+(`src/ingestion/README.md` § Sample vs. full mode). Whoever runs `--full` next should budget
+real time and memory headroom for it, not assume it "should just work" because the sample did.
 
 ## Phase 4 — Fraud ML
 
