@@ -108,25 +108,29 @@ src/                           ← application code (Phase 1+, docs/project-stat
   api/                         ← FastAPI app, health check, error handling (implemented)
   models/                      ← SQLAlchemy models + Pydantic schemas (implemented, Phase 2-3)
   ingestion/                    ← CSV -> Postgres loader + data-quality report (implemented, Phase 3)
+  ml/                           ← fraud model: features, baseline, XGBoost, evaluation (implemented, Phase 4)
   agents/orchestration/policies/tools/evidence/retrieval/security/monitoring/
                                ← package skeletons only; each documents which phase fills it in
 
 alembic/                       ← migrations (implemented, Phase 2-3) — env.py reads
                                   src.config.settings + src.models.Base.metadata
-tests/unit/                    ← 20 passing tests (10 Phase 1 + 7 Phase 2 + 3 Phase 3)
+tests/unit/                    ← 25 passing tests (10 Phase 1 + 7 Phase 2 + 3 Phase 3 + 5 Phase 4)
+data/models/                   ← trained model artifacts (git-ignored — binary)
 pyproject.toml, uv.lock, Dockerfile, docker-compose.yml, Makefile,
 .github/workflows/ci.yml, .pre-commit-config.yaml, .env.example
                                ← Phase 1 foundation tooling
 ```
 
-Repository initialization, Phase 1 — Foundation, Phase 2 — Domain, and Phase 3 — Ingestion
-(sample mode) are all done (`docs/project-status.md`). The fraud model, orchestration, the
-policy engine, `infrastructure/terraform/`, and everything else in
-`docs/implementation-roadmap.md` Phases 4+ do not exist yet — do not create empty placeholder
+Repository initialization, Phase 1 — Foundation, Phase 2 — Domain, Phase 3 — Ingestion
+(sample mode), and Phase 4 — Fraud ML are all done (`docs/project-status.md`). The evidence
+engine, orchestration, the policy engine, `infrastructure/terraform/`, and everything else in
+`docs/implementation-roadmap.md` Phases 5+ do not exist yet — do not create empty placeholder
 directories for a phase before it actually starts; the existing `src/` subpackages that are
 still just markers document this explicitly in their own docstrings. A `--full` ingestion run
 (the entire ~19M-row dataset, not just the verified recent-date sample) has also not been done
-— see `src/ingestion/README.md` § Sample vs. full mode before attempting it.
+— see `src/ingestion/README.md` § Sample vs. full mode before attempting it. **The trained
+fraud model performs near chance on the currently loaded sample — a real, verified finding, not
+a bug** (`docs/project-status.md` § Phase 4 detail, `src/ml/README.md`).
 
 ## 5. Confirmed technology stack (planned, not yet implemented)
 
@@ -218,7 +222,11 @@ DATABASE_URL="postgresql+psycopg://banking:banking@localhost:5433/banking_ai" uv
 
 # Ingestion (docs/project-status.md § Phase 3 detail; src/ingestion/README.md) — same
 # DATABASE_URL override, run after `alembic upgrade head`:
-DATABASE_URL="postgresql+psycopg://banking:banking@localhost:5433/banking_ai" uv run python -m src.ingestion.run --sample-days 3
+DATABASE_URL="postgresql+psycopg://banking:banking@localhost:5433/banking_ai" uv run python -m src.ingestion.run --sample-days 90 --skip-tables digital_events,call_transcripts
+
+# Fraud model training (docs/project-status.md § Phase 4 detail; src/ml/README.md) — same
+# DATABASE_URL override, run after ingestion:
+DATABASE_URL="postgresql+psycopg://banking:banking@localhost:5433/banking_ai" uv run python -m src.ml.train
 ```
 
 `Makefile` mirrors these as `make install|lint|typecheck|test|docker-up|docker-down`, but

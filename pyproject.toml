@@ -14,6 +14,9 @@ dependencies = [
     "alembic>=1.20.0",
     "psycopg[binary]>=3.2",
     "pandas>=3.0.6",
+    "scikit-learn>=1.9.1",
+    "xgboost>=3.4.1",
+    "shap>=0.52.0",
 ]
 
 [dependency-groups]
@@ -50,6 +53,13 @@ warn_return_any = true
 warn_unused_configs = true
 disallow_untyped_defs = true
 no_implicit_optional = true
+
+# scikit-learn and shap ship no py.typed marker / stubs as of the pinned
+# versions here — silence the resulting import-untyped noise rather than
+# scattering per-line ignores across src/ml/.
+[[tool.mypy.overrides]]
+module = ["sklearn.*", "shap.*", "joblib.*"]
+ignore_missing_imports = true
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

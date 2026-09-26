@@ -4,25 +4,24 @@ Owns: verified current implementation state. This document must never represent 
 functionality as implemented. Update it whenever a meaningful implementation phase
 (`docs/implementation-roadmap.md`) completes, changes, or blocks.
 
-**Last meaningful update:** 2026-09-25 (Phase 3 — Ingestion implemented and verified).
-**Last validation:** 2026-09-25 — actually run, not just inspected: `uv run ruff check .`
-(clean), `uv run mypy src` (clean, 39 files), `uv run pytest` (20/20 passed), a full
-`--sample-days 3` ingestion run against a live `docker compose` Postgres with the resulting
-report's per-table counts cross-checked against `SELECT count(*)` on every one of the 8 loaded
-tables — **exact match on every table** (`docs/data-lineage.md` § 7, § Phase 3 detail below),
-plus `alembic check` (zero schema drift) after adding the 5 new source-table models.
+**Last meaningful update:** 2026-09-26 (Phase 4 — Fraud ML implemented and verified).
+**Last validation:** 2026-09-26 — actually run, not just inspected: `uv run ruff check .`
+(clean), `uv run mypy src` (clean, 47 files), `uv run pytest` (25/25 passed), an expanded
+90-day ingestion re-run (see § Phase 3 detail update below), and a full fraud-model training
+run against the live database producing real evaluation metrics and two saved model artifacts
+(§ Phase 4 detail below) — reproduced twice with identical results.
 
 ## Current phase
 
-Phase 3 (Ingestion) complete. This repository now contains: the original master prompt
+Phase 4 (Fraud ML) complete. This repository now contains: the original master prompt
 (`prompt.md`), the competition brief (`project_presentation.txt`), the LATAM Bank dataset
 documentation (two PDFs at the repository root), the raw LATAM Bank dataset itself
 (`data/raw/`, git-ignored, ~5.0 GB — `docs/data-lineage.md` § 1), the Claude Code operating
 system (`CLAUDE.md`, `docs/`, `.claude/`, `evaluation/golden_cases/`), a working application
-foundation (Phase 1), a complete, migrated domain schema (Phase 2), and now a working,
-verified ingestion pipeline that has actually loaded real (synthetic) data into that schema
-(Phase 3).
-**No fraud model, no orchestration, no policy engine — those are Phases 4+. Only a bounded
+foundation (Phase 1), a complete, migrated domain schema (Phase 2), a working, verified
+ingestion pipeline (Phase 3, now with a 90-day sample loaded), and a trained, evaluated fraud
+model with a documented, honest finding (Phase 4).
+**No orchestration, no evidence engine, no policy engine — those are Phases 5+. Only a bounded
 recent-date sample has been loaded, not the full ~19M-row dataset — see § Phase 3 detail.**
 
 ## Status by roadmap phase (`docs/implementation-roadmap.md`)
@@ -31,8 +30,8 @@ recent-date sample has been loaded, not the full ~19M-row dataset — see § Pha
 |---|---|
 | 1 — Foundation | IMPLEMENTED — see § Phase 1 detail below |
 | 2 — Domain | IMPLEMENTED — see § Phase 2 detail below |
-| 3 — Synthetic Data / Ingestion | IMPLEMENTED — see § Phase 3 detail below (sample-mode verified; `--full` not yet run in this environment, see `src/ingestion/README.md`) |
-| 4 — Fraud ML | NOT_IMPLEMENTED |
+| 3 — Synthetic Data / Ingestion | IMPLEMENTED — see § Phase 3 detail below (sample-mode verified, now 90 days for transactions/complaints/call_center_interactions; `--full` not yet run in this environment, see `src/ingestion/README.md`) |
+| 4 — Fraud ML | IMPLEMENTED — see § Phase 4 detail below (real, honestly-reported near-chance result — see detail) |
 | 5 — Evidence Engine | NOT_IMPLEMENTED |
 | 6 — AI Agent | NOT_IMPLEMENTED |
 | 7 — Policy Engine | NOT_IMPLEMENTED |
@@ -58,7 +57,8 @@ recent-date sample has been loaded, not the full ~19M-row dataset — see § Pha
   fabricated (`docs/product-requirements.md` § 13).
 - Raw LATAM Bank dataset downloaded to `data/raw/` from the organizer-provided S3 bucket
   (`docs/data-lineage.md` § 1).
-- **Phase 1 — Foundation** and **Phase 2 — Domain**, detailed below.
+- **Phase 1 — Foundation**, **Phase 2 — Domain**, **Phase 3 — Ingestion**, and
+  **Phase 4 — Fraud ML**, detailed below.
 
 ### Phase 1 detail
 
@@ -197,6 +197,82 @@ recent-date sample has been loaded, not the full ~19M-row dataset — see § Pha
 - 3 new regression tests (`tests/unit/test_ingestion_loader.py`) pin the pandas-NA-handling fix.
   20 unit tests total (10 Phase 1 + 7 Phase 2 + 3 Phase 3), all passing.
 
+**Update (2026-09-26, for Phase 4):** re-ran ingestion with `--sample-days 90` and the new
+`--skip-tables digital_events,call_transcripts` flag (added this session — `src/ingestion/
+run.py`), since Phase 4's feature set doesn't need those two and skipping them kept the larger
+pull within this machine's memory budget. Verified again by cross-checking the report against
+live `SELECT count(*)`: `customers` 150,000, `products` 399,994, `daily_exchange_rates` 13,164,
+`transactions` 370,998, `call_center_interactions` 56,125, `complaints` 5,492 — exact match on
+every table, same as the Phase 3 verification methodology. Date range: 2026-03-20 to
+2026-06-18. Fraud rate at this scale: 335/370,998 ≈ 0.09%.
+
+### Phase 4 detail
+
+- `src/ml/`: `dataset.py` (loads from Postgres, computes the temporal train/val/test split
+  proportionally from whatever date range is actually loaded — not a hardcoded calendar
+  assumption, since Phase 3 only loads a bounded sample), `features.py` (leakage-safe feature
+  engineering — every rolling/historical statistic strictly prior to the row it's attached to),
+  `baseline.py` (logistic regression), `model.py` (XGBoost, `ModelArtifact` carrying
+  `model_version`/`feature_version`/`trained_at` per `docs/decision-policy.md` § 9),
+  `evaluate.py` (precision/recall/F1/ROC-AUC/PR-AUC/FPR/FNR/calibration/confusion matrix,
+  `docs/evaluation-plan.md` § 2 — business-cost metrics deliberately not computed, no
+  business-approved cost coefficients exist, `docs/evaluation-plan.md` § 3), `explain.py`
+  (SHAP global feature importance), `train.py` (CLI orchestrating all of the above).
+- 15 features implemented from `transactions`/`customers`/`complaints`/`daily_exchange_rates`
+  (amount deviation, transaction velocity at 24h/7d, country deviation, time-of-day deviation,
+  merchant fraud-rate-prior, historical complaint count, card-present, auth-failed, and more —
+  full list in `src/ml/features.py`'s `FEATURE_COLUMNS`). Device-novelty, IP-novelty, and true
+  geographic-distance are explicitly `NOT_IMPLEMENTED` (`NOT_IMPLEMENTED_FEATURES`) — they need
+  the `Device` entity derived from `digital_events`, which this ingestion run skipped; not
+  silently omitted, listed and explained.
+- **Two real bugs found and fixed during verification** (not assumed away):
+  1. Falling back to the raw `amount` column when `amount_usd` was null mixed three currencies
+     (ARS/COP/MXN) that differ by orders of magnitude (observed: COP avg ~6.7M vs. USD avg
+     ~1.7k) directly against USD amounts, producing `amount_deviation` values up to ~4×10¹³.
+     Fixed by converting through `daily_exchange_rates` properly; caught by inspecting the
+     actual output range, not by the code merely running without error.
+  2. The dataset's success `response_code` is the string `"0"`, not `"00"` — the first version
+     compared against the wrong string and flagged ~95% of transactions as `auth_failed`
+     (sanity-checked against `transaction_status`, which showed ~8% actually declined/pending/
+     reversed). Fixed; both bugs pinned with regression tests
+     (`tests/unit/test_ml_features.py`, 5 new tests).
+- **A third issue, performance not correctness:** the first correct version of the per-customer
+  feature computation used `.groupby(...).transform(lambda s: s.expanding()...)` — measured at
+  **598 seconds** for 371k rows. Rewritten as vectorized cumsum/cumcount/shift arithmetic (no
+  `.expanding()`, no per-group Python callable): **~30 seconds**, a ~20x improvement, verified
+  by direct timing before and after.
+- **Trained and evaluated, with a real, honestly-reported finding:** both the logistic-
+  regression baseline and the XGBoost main model perform **near chance** on this sample
+  (test-set ROC-AUC 0.462 and 0.502 respectively; PR-AUC ≈ 0.001, roughly the base fraud rate).
+  This is not a pipeline bug — verified directly: none of the 15 implemented features show a
+  meaningful univariate mean difference between fraud and non-fraud transactions (checked and
+  recorded in `src/ml/README.md`), while the dataset's own `fraud_score` field (excluded as a
+  feature per the leakage policy) clearly separates the classes (mean 15.0 non-fraud vs. 50.8
+  fraud, n=296,958) — proving a real signal exists in the generator's process that simply isn't
+  exposed through the transactional/behavioral columns loaded so far. This diagnostic is
+  included directly in the committed evaluation report
+  (`diagnostic_fraud_score_separation_by_is_fraud`), not just asserted in prose. Leading
+  hypothesis for recovering it: device/session/IP data via Phase 5's `Device` derivation.
+  This matches `docs/implementation-roadmap.md` Phase 4's own anticipated risk exactly
+  ("the synthetic `is_fraud` label distribution may be unrealistic ... report this honestly
+  rather than tuning to an artificially easy target") — reported as specified, not avoided.
+- Trained model artifacts saved: `data/models/logistic_regression-baseline.joblib`,
+  `data/models/xgboost-v0.1.0.joblib` (git-ignored — binary, not committed; reproducible via
+  `uv run python -m src.ml.train`). Evaluation report committed:
+  `data/reports/fraud_model_evaluation.json`.
+- Reproduced the full pipeline **twice** with identical results (both before and after the
+  final dtype fix caught by the test suite) — not a one-off lucky run.
+- 5 new regression tests (`tests/unit/test_ml_features.py`) covering: label columns never
+  appear in `FEATURE_COLUMNS`, first-transaction-has-no-history, prior stats never see the
+  current-or-future row (a synthetic 3-row test with a huge outlier on the last row, asserting
+  the first row's deviation is unaffected by it), the response-code regression, and the
+  currency-conversion regression. 25 unit tests total (10 Phase 1 + 7 Phase 2 + 3 Phase 3 + 5
+  Phase 4), all passing.
+- **Not done in this phase, by design:** the full rules/ML/LLM/hybrid baseline comparison
+  (`docs/evaluation-plan.md` § 10) needs the policy engine and orchestration layers and belongs
+  to Phase 11; this phase only compares the logistic-regression baseline against XGBoost, per
+  `docs/model-evaluation.md` § 4's actual scope for Phase 4.
+
 ## In progress
 
 Nothing.
@@ -213,10 +289,18 @@ Everything under "Status by roadmap phase" marked `NOT_IMPLEMENTED` above.
 - Host ports in `docker-compose.yml` are remapped to 8080 (api) and 5433 (db) because 8000 and
   5432 were already in use by other software on the development machine. Adjust back to
   8000/5432 if that's not the case in your environment.
-- Only a bounded recent-date sample of the dataset has been ingested (Phase 3,
-  `--sample-days 3` verified) — the full ~19M-row dataset has not been loaded. The development
-  machine has very little free RAM available; a `--full` ingestion run needs more headroom
-  than was available here — see `src/ingestion/README.md` § Sample vs. full mode.
+- Only a bounded recent-date sample of the dataset has been ingested (Phase 3, now 90 days for
+  `transactions`/`complaints`/`call_center_interactions`; `digital_events`/`call_transcripts`
+  remain at the earlier 3-day sample, skipped in the Phase 4 re-run) — the full ~19M-row
+  dataset has not been loaded. The development machine has very little free RAM available (a
+  background training run was killed by out-of-memory conditions twice during Phase 4 before
+  succeeding on retry) — a `--full` ingestion run needs more headroom than was available here.
+  See `src/ingestion/README.md` § Sample vs. full mode.
+- **The trained fraud model performs near chance** (test ROC-AUC 0.46–0.50) on the currently
+  loaded sample — this is a genuine, verified finding (not a bug; see § Phase 4 detail), not a
+  limitation to silently work around. The behavioral/transactional features available don't
+  carry the signal the dataset's own `fraud_score` field demonstrably has; the most promising
+  next step is Phase 5's `Device` derivation from `digital_events` (not yet loaded).
 - No frontend framework has been chosen (`docs/architecture.md` § 15, `OPEN QUESTION`).
 - No business-approved risk thresholds, cost coefficients, or approval-matrix cells exist
   anywhere in this project — every number in `docs/decision-policy.md` and

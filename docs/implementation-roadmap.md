@@ -61,18 +61,27 @@ out-of-memory conditions twice before a memory-usage fix; `--full` has not been 
 (`src/ingestion/README.md` § Sample vs. full mode). Whoever runs `--full` next should budget
 real time and memory headroom for it, not assume it "should just work" because the sample did.
 
-## Phase 4 — Fraud ML
+## Phase 4 — Fraud ML — `IMPLEMENTED` (see docs/project-status.md § Phase 4 detail)
 
 **Objective:** a working, evaluated fraud/risk model. **Scope:** baseline
 (logistic regression/rules) + main model (XGBoost/LightGBM) per
 `docs/model-evaluation.md` §§ 2–4; SHAP explainability; model versioning. **Deliverables:**
 trained model artifact + evaluation report (`docs/evaluation-plan.md` § 2 metrics, `MEASURED`
-and labeled with the actual temporal split used). **Dependencies:** Phase 3. **Tests:**
-feature unit tests, leakage checks (`fraud_score`/`is_fraud` never used as an input),
-calibration check. **Security:** none beyond standard data handling. **Exit criteria:** a
-documented, reproducible evaluation report exists with real numbers, not placeholders.
-**Risks:** the synthetic `is_fraud` label distribution may be unrealistic (e.g., too easy or
-too hard to predict) — report this honestly rather than tuning to an artificially easy target.
+and labeled with the actual temporal split used). **Delivered as:** `src/ml/` (dataset,
+features, baseline, model, evaluate, explain, train) — see `src/ml/README.md` and
+`docs/project-status.md` § Phase 4 detail for exactly what was built and verified.
+**Dependencies:** Phase 3. **Tests:** feature unit tests, leakage checks (`fraud_score`/
+`is_fraud` never used as an input), calibration check — implemented
+(`tests/unit/test_ml_features.py`, 5 tests) and passing. **Security:** none beyond standard
+data handling. **Exit criteria:** a documented, reproducible evaluation report exists with
+real numbers, not placeholders — met (`data/reports/fraud_model_evaluation.json`, reproduced
+twice with identical results). **Risks:** confirmed, not just anticipated — the synthetic
+`is_fraud` label turned out to be effectively unpredictable from the transactional/behavioral
+features this phase could build (test ROC-AUC 0.46–0.50, near chance), reported honestly per
+this very risk note rather than tuned away. Verified this isn't a pipeline bug: the dataset's
+own `fraud_score` field clearly separates the classes even though none of the 15 implemented
+features do — see `src/ml/README.md` for the full diagnostic and the leading hypothesis
+(device/IP signal via Phase 5's `Device` derivation, not yet loaded).
 
 ## Phase 5 — Evidence Engine
 
