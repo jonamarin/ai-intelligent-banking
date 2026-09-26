@@ -5,14 +5,15 @@ dispute intake and fraud investigation** for a synthetic LATAM retail bank. Buil
 Factored Datathon 2026 (`project_presentation.txt`), following the technical vision in
 `prompt.md`.
 
-> **Status: Phase 1 (Foundation) complete.** This repository contains the project's Claude Code
+> **Status: Phase 2 (Domain) complete.** This repository contains the project's Claude Code
 > operating system — architecture, domain model, security model, guardrails, evaluation plan,
-> and a phased implementation roadmap — plus a working application foundation: a FastAPI
-> health-check service, structured/redacted logging, config, Docker, tests, and CI. **No
-> domain models, fraud model, orchestration, or policy engine yet** — those are Phases 2+. See
-> `docs/project-status.md` for the authoritative, up-to-date state. Every claim in this README
-> is labeled `Implemented`, `Planned`, `Partial`, or `Mocked` — treat anything unlabeled as
-> aspirational.
+> and a phased implementation roadmap — a working application foundation (FastAPI health
+> check, structured/redacted logging, config, Docker, CI), and now a complete, migrated
+> PostgreSQL schema for every entity in `docs/domain-model.md`. **No ingestion pipeline (raw
+> CSVs aren't loaded yet), no fraud model, no orchestration, no policy engine** — those are
+> Phases 3+. See `docs/project-status.md` for the authoritative, up-to-date state. Every claim
+> in this README is labeled `Implemented`, `Planned`, `Partial`, or `Mocked` — treat anything
+> unlabeled as aspirational.
 
 ## 1. Problem
 
@@ -71,9 +72,10 @@ CLAUDE.md                    Persistent Claude Code operating contract (start he
 docs/                         Architecture, domain model, security, evaluation, roadmap, status
 .claude/                      Rules, skills, agents, hooks, settings for Claude Code sessions
 evaluation/golden_cases/      Synthetic scenario fixtures (schema + 10 cases)
-src/                           FastAPI app, config/logging (implemented); other subpackages
-                                are package skeletons only, documenting their future phase
-tests/unit/                   10 passing unit tests
+src/                           FastAPI app, config/logging, domain models (implemented);
+                                other subpackages are skeletons documenting their future phase
+alembic/                       Migrations (implemented) — 11 tables + 1 link table
+tests/unit/                   17 passing unit tests
 data/raw/                      Raw LATAM Bank dataset (git-ignored, ~5.0 GB — not in git)
 prompt.md                     Original master prompt (historical design input)
 project_presentation.txt      Competition brief (constraints, judging criteria)
@@ -91,18 +93,23 @@ Verified working (`docs/project-status.md`):
 git clone <repo> && cd ai-intelligent-banking
 cp .env.example .env                  # fill in real values only if you need them; mock LLM mode needs none
 uv sync                               # installs dependencies into .venv
-uv run pytest                         # 10/10 passing
+uv run pytest                         # 17/17 passing (offline — model tests use in-memory SQLite)
 uv run ruff check . && uv run mypy src   # lint + typecheck, both clean
 docker compose up -d                  # api on :8080, db (pgvector/pg16) on :5433
 curl http://localhost:8080/api/v1/health
+
+# apply the domain schema (11 tables) to the running db — see CLAUDE.md § 9 for why
+# DATABASE_URL is overridden here (the .env default targets Docker's internal network)
+DATABASE_URL="postgresql+psycopg://banking:banking@localhost:5433/banking_ai" uv run alembic upgrade head
+
 docker compose down
 ```
 
 `make install|test|lint|typecheck|docker-up|docker-down` wrap the same commands, but **`make`
 itself was not installed on the machine this was verified on** — install it if you want the
 shorter form, or just use the `uv`/`docker` commands above directly.
-Seeding data, running the API against real data, running evaluation, and running the demo are
-all `Planned` — they need Phases 2–3 (domain models, ingestion) first.
+Seeding real data, running the API against it, running evaluation, and running the demo are
+all `Planned` — they need Phase 3 (ingestion) first; the schema they'll load into is now real.
 
 ## 7. Demo scenarios — `Planned`
 

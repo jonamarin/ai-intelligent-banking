@@ -106,21 +106,24 @@ evaluation/
 src/                           ← application code (Phase 1+, docs/project-status.md)
   config/                      ← settings + structured logging (implemented)
   api/                         ← FastAPI app, health check, error handling (implemented)
-  agents/orchestration/models/policies/tools/evidence/retrieval/security/monitoring/
+  models/                      ← SQLAlchemy models + Pydantic schemas (implemented, Phase 2)
+  agents/orchestration/policies/tools/evidence/retrieval/security/monitoring/
                                ← package skeletons only; each documents which phase fills it in
 
-tests/unit/                    ← 10 passing tests (Phase 1)
+alembic/                       ← migrations (implemented, Phase 2) — env.py reads
+                                  src.config.settings + src.models.Base.metadata
+tests/unit/                    ← 17 passing tests (10 Phase 1 + 7 Phase 2)
 pyproject.toml, uv.lock, Dockerfile, docker-compose.yml, Makefile,
 .github/workflows/ci.yml, .pre-commit-config.yaml, .env.example
                                ← Phase 1 foundation tooling
 ```
 
-Repository initialization (the documentation/rules/skills/agents scaffold above) is done.
-Phase 1 — Foundation is also done (`docs/project-status.md`). `infrastructure/terraform/`,
-domain models, the fraud model, orchestration, the policy engine, and everything else in
-`docs/implementation-roadmap.md` Phases 2+ do not exist yet — do not create empty placeholder
-directories for a phase before it actually starts; the existing `src/` subpackages that are
-still just markers document this explicitly in their own docstrings.
+Repository initialization, Phase 1 — Foundation, and Phase 2 — Domain are all done
+(`docs/project-status.md`). The fraud model, orchestration, the policy engine, `infrastructure/
+terraform/`, and everything else in `docs/implementation-roadmap.md` Phases 3+ do not exist
+yet — do not create empty placeholder directories for a phase before it actually starts; the
+existing `src/` subpackages that are still just markers document this explicitly in their own
+docstrings.
 
 ## 5. Confirmed technology stack (planned, not yet implemented)
 
@@ -196,10 +199,19 @@ Real, verified commands as of Phase 1 (`docs/project-status.md`):
 uv sync                 # install dependencies (creates .venv)
 uv run ruff check .     # lint
 uv run mypy src         # type check
-uv run pytest           # unit tests
+uv run pytest           # unit tests (fast, offline — model tests use in-memory SQLite)
 docker compose build    # build the api image
-docker compose up -d    # start api (localhost:8080) + db (localhost:5433)
+docker compose up -d db # start db only (localhost:5433) — needed for the alembic commands below
+docker compose up -d    # start api (localhost:8080) + db
 docker compose down     # tear down
+
+# Migrations (docs/project-status.md § Phase 2 detail) — run from the host, so
+# override DATABASE_URL to the host-mapped port (the .env default targets the
+# `db` service's internal Docker hostname, which only resolves from inside a
+# container):
+DATABASE_URL="postgresql+psycopg://banking:banking@localhost:5433/banking_ai" uv run alembic upgrade head
+DATABASE_URL="postgresql+psycopg://banking:banking@localhost:5433/banking_ai" uv run alembic revision --autogenerate -m "..."
+DATABASE_URL="postgresql+psycopg://banking:banking@localhost:5433/banking_ai" uv run alembic check   # fails if models drifted from the last migration
 ```
 
 `Makefile` mirrors these as `make install|lint|typecheck|test|docker-up|docker-down`, but

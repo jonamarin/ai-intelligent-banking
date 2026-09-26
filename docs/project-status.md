@@ -4,33 +4,31 @@ Owns: verified current implementation state. This document must never represent 
 functionality as implemented. Update it whenever a meaningful implementation phase
 (`docs/implementation-roadmap.md`) completes, changes, or blocks.
 
-**Last meaningful update:** 2026-09-25 (Phase 1 — Foundation implemented and verified).
-**Last validation:** 2026-09-25 — actually run, not just inspected: `uv sync`, `uv run ruff
-check .` (clean), `uv run mypy src` (clean, 16 files), `uv run pytest` (10/10 passed),
-`docker compose build` + `docker compose up -d` (both containers healthy, `GET /api/v1/health`
-returned `200 {"status":"ok",...}` with a `X-Correlation-ID` header), `docker compose down`
-(clean teardown), `uv run pre-commit run --all-files` (config valid; hooks reported "no files
-to check" only because nothing is committed to git yet — expected, not a failure).
+**Last meaningful update:** 2026-09-25 (Phase 2 — Domain implemented and verified).
+**Last validation:** 2026-09-25 — actually run, not just inspected: `uv run ruff check .`
+(clean), `uv run mypy src` (clean, 29 files), `uv run pytest` (17/17 passed),
+`alembic revision --autogenerate` against a live `docker compose` Postgres (correctly detected
+all 12 tables), `alembic upgrade head` (applied cleanly — `\dt` confirmed all 12 tables + `
+alembic_version`), `alembic downgrade -1` then `upgrade head` again (round-trip reversibility
+confirmed), `alembic check` after a model tweak (confirmed zero schema drift).
 
 ## Current phase
 
-Phase 1 (Foundation) complete. This repository now contains: the original master prompt
+Phase 2 (Domain) complete. This repository now contains: the original master prompt
 (`prompt.md`), the competition brief (`project_presentation.txt`), the LATAM Bank dataset
 documentation (two PDFs at the repository root), the raw LATAM Bank dataset itself
 (`data/raw/`, git-ignored, ~5.0 GB — `docs/data-lineage.md` § 1), the Claude Code operating
-system (`CLAUDE.md`, `docs/`, `.claude/`, `evaluation/golden_cases/`), and a working
-application foundation: `src/` package skeleton, a FastAPI health-check service, structured
-JSON logging with mandatory redaction, environment-based config, Docker/Docker Compose, a
-Makefile, CI, pre-commit, and 10 passing unit tests.
-**No domain models, no database schema, no fraud model, no orchestration, no policy engine —
-those are Phases 2+.**
+system (`CLAUDE.md`, `docs/`, `.claude/`, `evaluation/golden_cases/`), a working application
+foundation (Phase 1), and now a complete, migrated domain schema (Phase 2).
+**No ingestion pipeline yet (raw CSVs are not loaded into these tables), no fraud model, no
+orchestration, no policy engine — those are Phases 3+.**
 
 ## Status by roadmap phase (`docs/implementation-roadmap.md`)
 
 | Phase | State |
 |---|---|
 | 1 — Foundation | IMPLEMENTED — see § Phase 1 detail below |
-| 2 — Domain | NOT_IMPLEMENTED |
+| 2 — Domain | IMPLEMENTED — see § Phase 2 detail below |
 | 3 — Synthetic Data / Ingestion | NOT_IMPLEMENTED (raw dataset files now present locally at `data/raw/` — see `docs/data-lineage.md` § 1 — but no ingestion pipeline/code exists yet) |
 | 4 — Fraud ML | NOT_IMPLEMENTED |
 | 5 — Evidence Engine | NOT_IMPLEMENTED |
@@ -58,7 +56,7 @@ those are Phases 2+.**
   fabricated (`docs/product-requirements.md` § 13).
 - Raw LATAM Bank dataset downloaded to `data/raw/` from the organizer-provided S3 bucket
   (`docs/data-lineage.md` § 1).
-- **Phase 1 — Foundation**, detailed below.
+- **Phase 1 — Foundation** and **Phase 2 — Domain**, detailed below.
 
 ### Phase 1 detail
 
@@ -67,9 +65,10 @@ those are Phases 2+.**
   `python-dotenv`; dev group: `pytest`, `pytest-asyncio`, `httpx`, `ruff`, `mypy`,
   `pre-commit`. `uv.lock` committed for reproducibility.
 - `src/` package skeleton matching `docs/architecture.md`: `config` (settings + logging,
-  populated), `api` (populated), and `agents`/`orchestration`/`models`/`policies`/`tools`/
-  `evidence`/`retrieval`/`security`/`monitoring` (package markers only, each documenting which
-  later phase fills it in — not empty placeholders, but not yet functional either).
+  populated), `api` (populated), `models` (populated as of Phase 2, below), and
+  `agents`/`orchestration`/`policies`/`tools`/`evidence`/`retrieval`/`security`/`monitoring`
+  (package markers only, each documenting which later phase fills it in — not empty
+  placeholders, but not yet functional either).
 - `src/config/settings.py` — `pydantic-settings` `Settings`, env-file-backed, `llm_mode`
   defaults to `mock` (hard requirement, `prompt.md` § 52).
 - `src/config/logging.py` — structured JSON logging **with a mandatory redaction filter**
@@ -102,6 +101,47 @@ those are Phases 2+.**
 - `.pre-commit-config.yaml` — ruff + mypy hooks; installs and runs correctly (verified).
 - 10 unit tests, all passing: health endpoint + correlation ID (4), settings defaults/overrides
   (2), logging redaction (4).
+
+### Phase 2 detail
+
+- 11 SQLAlchemy models (`src/models/`) covering every entity in `docs/domain-model.md` § 3:
+  `Customer`, `Product` (Account), `Device` (derived — see its docstring on why
+  `known_customer` is a simplification), `Transaction` (with `is_fraud`/`fraud_score` labeled
+  `SYNTHETIC` and excluded from feature use, docs/data-lineage.md § 5), `Merchant` (derived),
+  `CustomerInteraction`, `FraudCase`, `Evidence` (append-only by convention; `direction`
+  constrained to a real `EvidenceDirection` enum, validated on flush), `Decision` (every
+  provenance field from `docs/decision-policy.md` § 9 is a real NOT NULL column, plus a
+  `decision_evidence` many-to-many link table so evidence attribution is a real foreign-key
+  relationship, not a JSON array of IDs), `HumanReview` (a structurally distinct table from
+  `Decision`, on purpose — docs/domain-model.md § Human Review), and `AuditEvent`.
+  `registration_branch_id`/`opening_branch_id`/`branch_id`/`reviewer_id` are plain string
+  columns without FK constraints, since `branches` and `service_agents` are out of this
+  workflow's modeled scope (`docs/data-dictionary.md` § Tables not used) — documented in each
+  model's docstring, not silently omitted.
+- PII/sensitivity classification (`docs/data-governance.md` § 1) is noted directly in the
+  `Customer` model's docstring/comments, not left implicit.
+- Pydantic read schemas (`src/models/schemas.py`) for the six entities most likely to appear
+  in an API response first (`Customer`, `Transaction`, `FraudCase`, `Evidence`, `Decision`,
+  `HumanReview`); `Device`/`Merchant`/`CustomerInteraction` schemas are deferred to whichever
+  phase actually exposes them via a tool or endpoint, per `src/models/schemas.py`'s own
+  docstring — not built speculatively ahead of a real consumer.
+- Alembic wired to `src/models`' `Base.metadata` and to `src.config.settings.get_settings()`
+  for its DB URL (single source of truth — no separate hardcoded URL in `alembic.ini`).
+  Initial migration (`alembic/versions/4e7deb4207a2_initial_domain_schema.py`) autogenerated
+  and applied against a live `docker compose` Postgres; verified reversible
+  (`downgrade -1` → `upgrade head`) and drift-free after a follow-up model tweak
+  (`alembic check`).
+- 7 new unit tests (`tests/unit/test_models.py`, `tests/unit/conftest.py`) against an
+  in-memory SQLite engine — fast and fully offline, per `.claude/rules/testing.md`. This is
+  deliberately a *different* kind of check than the Alembic-against-Postgres verification
+  above: SQLite proves the declared ORM constraints (unique, FK, enum validation) behave
+  correctly; it does not prove the migration applies to Postgres — re-verify that separately
+  (steps recorded above) if the models change again. Covers: unique `document_number`,
+  FK enforcement (`Product` requires an existing `Customer`), a full `Transaction` insert
+  linked to both `Customer` and `Product`, `Evidence.direction` rejecting an invalid value,
+  `Decision` requiring a non-null `policy_version`, and `HumanReview` staying a structurally
+  distinct record from the `Decision` it reviews.
+- 17 unit tests total (10 from Phase 1 + 7 new), all passing.
 
 ## In progress
 
