@@ -24,9 +24,19 @@ def get_engine() -> Engine:
     Not memoized at import time — tests override DATABASE_URL per-test via
     environment variables / a dedicated test engine, so this must re-read
     settings each time it's called rather than binding an engine at import.
+
+    `connect_timeout` (Phase 9, docs/architecture.md § 10: "Database
+    unavailable -> fail the request with a clear error") bounds how long a
+    connection attempt can hang before failing — without it, a down
+    database can block for the OS's default TCP timeout (tens of seconds to
+    minutes), which is not "a clear error," it's an unbounded stall.
     """
     settings = get_settings()
-    return create_engine(settings.database_url, pool_pre_ping=True)
+    return create_engine(
+        settings.database_url,
+        pool_pre_ping=True,
+        connect_args={"connect_timeout": settings.db_connect_timeout_seconds},
+    )
 
 
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=get_engine())

@@ -4,16 +4,18 @@ Owns: verified current implementation state. This document must never represent 
 functionality as implemented. Update it whenever a meaningful implementation phase
 (`docs/implementation-roadmap.md`) completes, changes, or blocks.
 
-**Last meaningful update:** 2026-09-26 (Phase 8 — Security Hardening implemented and verified).
-**Last validation:** 2026-09-26 — actually run, not just inspected: `uv run ruff check .`
-(clean), `uv run mypy src` (clean, 67 files), `uv run pytest` (88/88 passed), all 10
-`evaluation/golden_cases/*.json` fixtures run end-to-end through the orchestration flow with
-real authorization decisions attached, and a measured adversarial suite (17 cases: 7 injection
-phrasings + 10 golden cases) with 0 unsafe actions (§ Phase 8 detail below).
+**Last meaningful update:** 2026-09-27 (Phase 9 — Reliability implemented and verified).
+**Last validation:** 2026-09-27 — actually run, not just inspected: `uv run ruff check .`
+(clean), `uv run mypy src` (clean, 70 files), `uv run pytest` (111/111 passed), all 10
+`evaluation/golden_cases/*.json` fixtures run end-to-end (including `dependency_failure.json`
+now genuinely routed through a failing LLM client), and a live round trip against the real
+database proving idempotency (one `Decision` row + one `action.executed` event after two
+`persist_decision()` calls with the same key) and a bounded, clear DB-unavailable failure
+(§ Phase 9 detail below).
 
 ## Current phase
 
-Phase 8 (Security Hardening) complete. This repository now contains: the original master prompt
+Phase 9 (Reliability) complete. This repository now contains: the original master prompt
 (`prompt.md`), the competition brief (`project_presentation.txt`), the LATAM Bank dataset
 documentation (two PDFs at the repository root), the raw LATAM Bank dataset itself
 (`data/raw/`, git-ignored, ~5.0 GB — `docs/data-lineage.md` § 1), the Claude Code operating
@@ -22,13 +24,17 @@ foundation (Phase 1), a complete, migrated domain schema (Phase 2), a working, v
 ingestion pipeline (Phase 3), a trained, evaluated fraud model with a documented, honest
 finding (Phase 4), a working Evidence Engine that has built and persisted real evidence graphs
 (Phase 5), a working case orchestration state machine (Phase 6), a real deterministic
-authorization path (Phase 7), and now a centralized PII/secret redaction layer plus an
-automated red-team test suite covering `docs/guardrails.md` § 4's adversarial cases — which
-found and fixed a real gap before being reported as done (an injection-detection blind spot:
-3 of 7 tested adversarial phrasings weren't caught by the original 6-pattern list). See
-`src/security/README.md`.
-**Irreversible/Critical actions still require human approval unconditionally, provably — a
-test that tries to bypass this exists and fails (Phase 7, `docs/demo-script.md` Scenario D).**
+authorization path (Phase 7), a centralized PII/secret redaction layer and red-team test suite
+(Phase 8), and now real handling for the failure modes in `docs/architecture.md` § 10: bounded
+LLM retries with a deterministic fallback path (Scenario E), a bounded database-connection
+timeout (never an indefinite hang), RAG-failure graceful degradation, and a real,
+database-enforced idempotency mechanism for state-changing actions (Scenario J) — closing the
+last major documented gap carried since Phase 7. See `src/orchestration/README.md` §
+Reliability and `src/policies/README.md`.
+**Irreversible/Critical actions still require human approval unconditionally, provably, even
+when the LLM is unavailable** — verified directly: a degraded case proposing a $100,000 transfer
+still produces `requires_human_approval=True` through the full fallback path
+(`docs/demo-script.md` Scenario D + Scenario E, together).
 
 ## Status by roadmap phase (`docs/implementation-roadmap.md`)
 
@@ -42,7 +48,7 @@ test that tries to bypass this exists and fails (Phase 7, `docs/demo-script.md` 
 | 6 — AI Agent | IMPLEMENTED — see § Phase 6 detail below (mock-LLM orchestration verified against all 10 golden cases + 2 live transactions; genuine gaps found and honestly reported, not hidden) |
 | 7 — Policy Engine | IMPLEMENTED — see § Phase 7 detail below (Scenario D exit criteria met and tested against an actual bypass attempt; genuine remaining gaps — idempotency, risk-band/model-score wiring — honestly reported, not hidden) |
 | 8 — Security Hardening | IMPLEMENTED — see § Phase 8 detail below (0/17 unsafe actions in a measured, sample-size-stated adversarial suite; found and fixed a real injection-detection gap; several red-team cases honestly reported as not yet coverable, not silently claimed) |
-| 9 — Reliability | NOT_IMPLEMENTED |
+| 9 — Reliability | IMPLEMENTED — see § Phase 9 detail below (LLM fallback, DB timeout, RAG-failure degradation, and idempotency all verified — the idempotency round trip against a real database, the rest via `tests/reliability/`) |
 | 10 — UI | NOT_IMPLEMENTED |
 | 11 — Evaluation | NOT_IMPLEMENTED |
 | 12 — Demo | NOT_IMPLEMENTED |
@@ -65,8 +71,8 @@ test that tries to bypass this exists and fails (Phase 7, `docs/demo-script.md` 
   (`docs/data-lineage.md` § 1).
 - **Phase 1 — Foundation**, **Phase 2 — Domain**, **Phase 3 — Ingestion**,
   **Phase 4 — Fraud ML**, **Phase 5 — Evidence Engine**, **Phase 6 — AI Agent /
-  Orchestration**, **Phase 7 — Policy Engine**, and **Phase 8 — Security Hardening**,
-  detailed below.
+  Orchestration**, **Phase 7 — Policy Engine**, **Phase 8 — Security Hardening**, and
+  **Phase 9 — Reliability**, detailed below.
 
 ### Phase 1 detail
 
@@ -515,6 +521,67 @@ every table, same as the Phase 3 verification methodology. Date range: 2026-03-2
   (`docs/api-contracts.md` § Security — Phase 1's API isn't wired to orchestration yet);
   supply-chain/dependency-vulnerability CI scanning (`docs/security-model.md` § 9, still
   `PLANNED`).
+
+### Phase 9 detail
+
+- `src/orchestration/retry.py` (`call_with_retry()`, `LLMUnavailableError`) and `fallback.py`
+  (`fallback_extract_intent`/`fallback_propose_action`/`fallback_explain`) — every `llm_client`
+  call in `flow.run_case()` is now wrapped: bounded retries (`Settings.llm_max_attempts`,
+  default 2) for transport/validation-shaped failures only, then a deterministic degrade to
+  `fallback.py`'s conservative path (always `escalate`, never guess; local regex injection
+  detection still runs with no provider call). New `CaseResult.llm_degraded` field and
+  `decisions.llm_degraded`/`.model_degraded` real boolean columns (a migration, not a JSON-blob
+  workaround) record it, matching `docs/demo-script.md` Scenario E's "clearly flagged ... in the
+  decision record" wording literally.
+- `src/models/base.py`'s `get_engine()` now passes `connect_args={"connect_timeout": ...}`
+  (`Settings.db_connect_timeout_seconds`, default 5s) — verified directly against a genuinely
+  unreachable address (`10.255.255.1`, not a mock): fails with a clear `OperationalError` in
+  ~2-6 seconds depending on the configured bound, not an indefinite hang on the OS's own TCP
+  timeout (`tests/reliability/test_db_timeout.py`).
+- `flow._ground_in_policy()` now catches any exception from `rag.retrieve()` and degrades to
+  `policy_source=None` rather than letting a RAG failure crash the whole case.
+- **Idempotency (Scenario J), the last major documented gap carried since Phase 7, closed**:
+  `src/tools/base.py`'s `ToolProposal.idempotency_key` (default `f"{case_id}-{tool_name}"`) flows
+  through the new `AuthorizationResult.idempotency_key`/`.tool_name` fields into
+  `src/policies/gateway.py`'s rewritten `persist_decision()`, which now reserves the key in a
+  new `action_executions` table (migration `0a0050d49acc`) via `INSERT ... ON CONFLICT DO
+  NOTHING RETURNING` — a database-level race, not a check-then-insert, done *before* the
+  `Decision` row is created so a detected duplicate never creates an orphaned one.
+- **A real bug found and fixed mid-implementation, not by inspection**: the first version of
+  this migration gave `action_executions.decision_id` a normal (immediate) foreign key —
+  reserving the idempotency key before the `Decision` row exists (the correct ordering, needed
+  to avoid the orphaned-row problem above) then failed with a live `ForeignKeyViolation` on the
+  very first real persist attempt, not in a unit test. Fixed by making the FK
+  `DEFERRABLE INITIALLY DEFERRED` (checked at transaction commit, not at the individual INSERT)
+  — re-verified live afterward: two `persist_decision()` calls with the same idempotency key
+  against a real database produced exactly one `Decision` row, one `action.executed` audit
+  event, and one `action.duplicate_detected` event, all tied to the same `decision_id`.
+- **`evaluation/golden_cases/dependency_failure.json` genuinely exercises Scenario E now**:
+  `run_golden_cases.py` reads that fixture's `synthetic_input.injected_fault` field (previously
+  inert documentation) and routes it through `FailingLLMClient` instead of `MockLLMClient`.
+  Result: `intent.confidence=0.00` (honestly `unknown`, not guessed), `action=escalate`,
+  `human_approval=True`, `llm_degraded=True` — matching the fixture's own
+  `expected_human_involvement` by actually running it, not by inspection.
+- **Security held under degradation, verified directly, not assumed**: a case proposing a
+  $100,000 transfer, run through `FailingLLMClient`, still produces `action_risk="irreversible"`
+  and `requires_human_approval=True` through the full fallback path — the Policy Engine (Phase
+  7) keeps running in full even when the LLM didn't
+  (`tests/reliability/test_llm_fallback.py::test_degraded_result_still_goes_through_the_policy_engine`).
+- 23 new tests: `tests/reliability/test_retry.py` (6), `test_llm_fallback.py` (10),
+  `test_idempotency.py` (6), `test_db_timeout.py` (1, verified against a real unreachable
+  address). 111 unit/security/reliability tests total (10 Phase 1 + 7 Phase 2 + 3 Phase 3 + 5
+  Phase 4 + 13 Phase 5 + 10 Phase 6 + 20 Phase 7 + 20 Phase 8 + 23 Phase 9), all passing.
+- **Not done in this phase, by design or as an honestly-reported gap:** circuit breakers (judged
+  not useful yet — no dependency here is called in a tight loop where a breaker would earn its
+  complexity over a bounded retry, per the roadmap's own "where useful" scope); Kafka/event-bus
+  degradation (not applicable — no message bus exists or is planned); the fraud-model-degraded
+  half of Scenario F (no live model call exists in orchestration to degrade — a pre-existing
+  Phase 4/6 gap, not new here, though `decisions.model_degraded` now exists as a real column for
+  when that wiring happens); `evaluation/golden_cases/duplicate_action.json` still doesn't pass
+  end-to-end (the idempotency mechanism itself is proven; the mock LLM's intent detection still
+  doesn't map that fixture's customer message to a `freeze_card` tool call — a Phase 6
+  limitation, not a Phase 9 one). Full detail: `src/orchestration/README.md` § Reliability,
+  `src/policies/README.md`.
 
 ## In progress
 

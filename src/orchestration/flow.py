@@ -15,11 +15,24 @@ denied outright, computed from the case's own facts, never from the LLM's
 still *executes* a tool — `src/tools/action_tools.py` functions only ever
 return a `ToolProposal`; only `src/policies/gateway.py` (used by
 `live_case.py`) persists a real Decision/AuditEvent row for a live case.
+
+Every `llm_client` call is wrapped in `retry.call_with_retry` (Phase 9,
+docs/architecture.md § 10) — bounded retries, then `LLMUnavailableError`,
+caught once here to switch to `fallback.py`'s deterministic path
+(`CaseResult.llm_degraded=True`, `docs/demo-script.md` Scenario E) instead
+of raising out of `run_case()` and leaving the caller with nothing.
 """
 
 from src.agents.llm_client import LLMClient
 from src.agents.schemas import ActionProposal, IntentResult
+from src.config.settings import get_settings
 from src.orchestration.case import CaseInput, CaseResult
+from src.orchestration.fallback import (
+    fallback_explain,
+    fallback_extract_intent,
+    fallback_propose_action,
+)
+from src.orchestration.retry import LLMUnavailableError, call_with_retry
 from src.policies.authorization import AuthorizationResult, authorize
 from src.policies.config import PolicyConfig
 from src.retrieval.policy_rag import PolicyRAG
@@ -114,34 +127,84 @@ def _refusal(
     )
 
 
+def _degraded_result(
+    case: CaseInput,
+    rag: PolicyRAG | None,
+    policy_config: PolicyConfig | None,
+    intent: IntentResult | None = None,
+) -> CaseResult:
+    """Scenario E (`docs/demo-script.md`): the LLM is unavailable. Intent
+    detection still runs locally (`fallback_extract_intent` — pure regex, no
+    provider call); everything downstream degrades to
+    `src/orchestration/fallback.py`'s conservative, escalate-by-default path.
+    """
+    if intent is None:
+        intent = fallback_extract_intent(case.customer_message)
+    action = fallback_propose_action(intent.injection_attempt_detected)
+    explanation = fallback_explain(action)
+    return CaseResult(
+        case_id=case.case_id,
+        intent=intent,
+        next_question=None,
+        action=action,
+        explanation=explanation,
+        policy_source=_ground_in_policy(rag, action.proposed_action),
+        authorization=(
+            None
+            if action.proposed_action == "refuse"
+            else _authorize_action(case, action, policy_config)
+        ),
+        llm_degraded=True,
+    )
+
+
 def run_case(
     case: CaseInput,
     llm_client: LLMClient,
     rag: PolicyRAG | None = None,
     policy_config: PolicyConfig | None = None,
+    max_attempts: int | None = None,
 ) -> CaseResult:
-    intent = llm_client.extract_intent(case.customer_message)
+    attempts = max_attempts if max_attempts is not None else get_settings().llm_max_attempts
+
+    try:
+        intent = call_with_retry(
+            llm_client.extract_intent, case.customer_message, max_attempts=attempts
+        )
+    except LLMUnavailableError:
+        return _degraded_result(case, rag, policy_config)
 
     if intent.injection_attempt_detected:
         return _refusal(case, intent, llm_client, rag)
 
     evidence_summary = _summarize_evidence(case)
-    next_question = llm_client.decide_next_question(evidence_summary, case.candidate_questions)
 
-    if next_question.should_ask:
-        action = ActionProposal(
-            proposed_action="ask_question",
-            reason=next_question.rationale,
-            requires_human_approval=False,
-        )
-    else:
-        action = llm_client.propose_action(
+    try:
+        next_question = call_with_retry(
+            llm_client.decide_next_question,
             evidence_summary,
-            contradiction_count=len(case.contradictions),
-            escalation_required=case.escalation_required,
+            case.candidate_questions,
+            max_attempts=attempts,
         )
-
-    explanation = llm_client.explain(evidence_summary, action)
+        if next_question.should_ask:
+            action = ActionProposal(
+                proposed_action="ask_question",
+                reason=next_question.rationale,
+                requires_human_approval=False,
+            )
+        else:
+            action = call_with_retry(
+                llm_client.propose_action,
+                evidence_summary,
+                contradiction_count=len(case.contradictions),
+                escalation_required=case.escalation_required,
+                max_attempts=attempts,
+            )
+        explanation = call_with_retry(
+            llm_client.explain, evidence_summary, action, max_attempts=attempts
+        )
+    except LLMUnavailableError:
+        return _degraded_result(case, rag, policy_config, intent=intent)
 
     return CaseResult(
         case_id=case.case_id,
@@ -155,8 +218,15 @@ def run_case(
 
 
 def _ground_in_policy(rag: PolicyRAG | None, proposed_action: str) -> str | None:
+    # Vector DB / RAG unavailable (docs/architecture.md § 10): answer only
+    # with retrieved, verifiable facts — if retrieval itself is broken,
+    # degrade to "policy could not be verified" (None) rather than letting a
+    # RAG exception crash the whole case.
     if rag is None:
         return None
     query = _POLICY_QUERY_BY_ACTION.get(proposed_action, proposed_action)
-    result = rag.retrieve(query)
+    try:
+        result = rag.retrieve(query)
+    except Exception:
+        return None
     return result.chunk.source_file if result else None

@@ -5,6 +5,14 @@ evaluation/golden_cases/ scenario"). Fully offline — no database, no API key.
 
     uv run python -m src.orchestration.run_golden_cases
 
+A case whose fixture sets `synthetic_input.injected_fault` to mention an LLM
+outage (e.g. `evaluation/golden_cases/dependency_failure.json`'s
+`"llm_provider_timeout_then_fraud_model_service_unavailable"`) is run
+through `FailingLLMClient` (Phase 9, `src/agents/llm_client.py`) instead of
+the normal `MockLLMClient` — so Scenario E's fallback path
+(`src/orchestration/fallback.py`) is genuinely exercised against that
+fixture, not merely documented as an intent.
+
 This does NOT auto-grade each case against its free-text `prohibited_outcome`
 — reliably parsing arbitrary prose into a pass/fail check would be fragile,
 falsely-precise pseudo-validation. Instead it reports the chosen action
@@ -20,10 +28,17 @@ import argparse
 import json
 from pathlib import Path
 
-from src.agents.llm_client import MockLLMClient
+from src.agents.llm_client import FailingLLMClient, LLMClient, MockLLMClient
 from src.orchestration.flow import run_case
 from src.orchestration.golden_case_loader import GOLDEN_CASES_DIR, load_all_golden_cases
 from src.retrieval.policy_rag import PolicyRAG
+
+
+def _llm_client_for(golden: dict) -> LLMClient:
+    fault = str(golden.get("synthetic_input", {}).get("injected_fault", "")).lower()
+    if "llm" in fault:
+        return FailingLLMClient()
+    return MockLLMClient()
 
 
 def main() -> None:
@@ -33,14 +48,14 @@ def main() -> None:
     )
     args = parser.parse_args()
 
-    llm_client = MockLLMClient()
     rag = PolicyRAG()
     cases = load_all_golden_cases()
 
     report_cases = []
     for case in cases:
-        result = run_case(case, llm_client, rag)
         golden = json.loads((GOLDEN_CASES_DIR / f"{case.case_id}.json").read_text(encoding="utf-8"))
+        llm_client = _llm_client_for(golden)
+        result = run_case(case, llm_client, rag, max_attempts=1)
 
         report_cases.append(
             {
@@ -54,6 +69,8 @@ def main() -> None:
         )
 
         print(f"\n{case.case_id}:")
+        if result.llm_degraded:
+            print("  [!] llm_degraded=True (Scenario E fallback path exercised)")
         print(f"  intent: {result.intent.intent} (confidence={result.intent.confidence:.2f})")
         if result.intent.injection_attempt_detected:
             print("  [!] injection_attempt_detected=True")

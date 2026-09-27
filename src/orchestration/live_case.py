@@ -133,6 +133,12 @@ def main() -> None:
         help="Persist the evidence graph and a real Decision/AuditEvent row "
         "(docs/domain-model.md).",
     )
+    parser.add_argument(
+        "--persist-twice",
+        action="store_true",
+        help="With --persist, call persist_decision a second time to demonstrate idempotency "
+        "(docs/demo-script.md Scenario J, src/policies/gateway.py).",
+    )
     args = parser.parse_args()
     if not args.transaction_id and not args.pick_fraud:
         raise SystemExit("Specify --transaction-id or --pick-fraud.")
@@ -166,8 +172,19 @@ def main() -> None:
     print(f"  contradictions: {len(case.contradictions)}")
 
     if args.persist:
-        decision_id = persist_decision(engine, case, result, MockLLMClient.model_name)
-        print(f"  persisted: decision_id={decision_id}")
+        decision_id, was_duplicate = persist_decision(
+            engine, case, result, MockLLMClient.model_name
+        )
+        print(f"  persisted: decision_id={decision_id} was_duplicate={was_duplicate}")
+        if args.persist_twice:
+            decision_id_2, was_duplicate_2 = persist_decision(
+                engine, case, result, MockLLMClient.model_name
+            )
+            print(
+                f"  persisted again (same case/action): decision_id={decision_id_2} "
+                f"was_duplicate={was_duplicate_2} "
+                f"(same as first? {decision_id_2 == decision_id})"
+            )
 
 
 if __name__ == "__main__":

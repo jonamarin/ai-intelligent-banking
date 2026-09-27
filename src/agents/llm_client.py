@@ -28,8 +28,11 @@ MODEL_NAME_MOCK = "mock-rule-based-v0.1.0"
 # (docs/security-model.md § 2, docs/guardrails.md § 4). Detecting these is
 # safe from untrusted input; *acting* on them is never done anywhere in this
 # codebase — see docs/guardrails.md § 3 (the authorization chain doesn't
-# consult conversation content at all).
-_INJECTION_PATTERNS = [
+# consult conversation content at all). Public (not `_`-prefixed): reused by
+# src/orchestration/fallback.py's Scenario E deterministic fallback path
+# (Phase 9), which must detect injection attempts without depending on a
+# working LLM provider — same patterns, single source of truth, not a copy.
+INJECTION_PATTERNS = [
     r"ignora\s+tus?\s+instruccion",
     r"ignore\s+(your\s+)?(previous\s+)?instructions",
     r"soy\s+el\s+administrador",
@@ -78,7 +81,7 @@ class MockLLMClient:
 
     def extract_intent(self, message: str) -> IntentResult:
         lower = message.lower()
-        injection = any(re.search(p, lower) for p in _INJECTION_PATTERNS)
+        injection = any(re.search(p, lower) for p in INJECTION_PATTERNS)
 
         intent = "general_inquiry"
         entities: dict[str, str] = {}
@@ -175,6 +178,73 @@ class MockLLMClient:
         return CaseExplanation(
             customer_explanation_es=customer_text, analyst_explanation=analyst_text
         )
+
+
+class FailingLLMClient:
+    """Test double simulating an unavailable/timing-out LLM provider (Phase
+    9, `docs/demo-script.md` Scenario E) — every method raises `TimeoutError`
+    unconditionally. Used by `tests/reliability/` to prove
+    `src/orchestration/flow.py`'s retry-then-fallback path actually
+    activates, not just that it's documented. Never used outside tests."""
+
+    model_name = "failing-test-double"
+
+    def extract_intent(self, message: str) -> IntentResult:
+        raise TimeoutError("simulated LLM provider timeout")
+
+    def decide_next_question(
+        self, uncertainty_summary: str, candidate_questions: list[str]
+    ) -> NextQuestionDecision:
+        raise TimeoutError("simulated LLM provider timeout")
+
+    def propose_action(
+        self, evidence_summary: str, contradiction_count: int, escalation_required: bool
+    ) -> ActionProposal:
+        raise TimeoutError("simulated LLM provider timeout")
+
+    def explain(self, evidence_summary: str, proposal: ActionProposal) -> CaseExplanation:
+        raise TimeoutError("simulated LLM provider timeout")
+
+
+class FlakyLLMClient:
+    """Test double that fails its first `fail_first_n` calls (any method)
+    with `TimeoutError`, then delegates to a real `MockLLMClient` — proves
+    the retry budget in `src/orchestration/retry.py` genuinely retries
+    rather than only ever falling back on the first failure. Never used
+    outside tests."""
+
+    model_name = MockLLMClient.model_name
+
+    def __init__(self, fail_first_n: int) -> None:
+        self._remaining_failures = fail_first_n
+        self._delegate = MockLLMClient()
+
+    def _maybe_fail(self) -> None:
+        if self._remaining_failures > 0:
+            self._remaining_failures -= 1
+            raise TimeoutError("simulated transient LLM provider failure")
+
+    def extract_intent(self, message: str) -> IntentResult:
+        self._maybe_fail()
+        return self._delegate.extract_intent(message)
+
+    def decide_next_question(
+        self, uncertainty_summary: str, candidate_questions: list[str]
+    ) -> NextQuestionDecision:
+        self._maybe_fail()
+        return self._delegate.decide_next_question(uncertainty_summary, candidate_questions)
+
+    def propose_action(
+        self, evidence_summary: str, contradiction_count: int, escalation_required: bool
+    ) -> ActionProposal:
+        self._maybe_fail()
+        return self._delegate.propose_action(
+            evidence_summary, contradiction_count, escalation_required
+        )
+
+    def explain(self, evidence_summary: str, proposal: ActionProposal) -> CaseExplanation:
+        self._maybe_fail()
+        return self._delegate.explain(evidence_summary, proposal)
 
 
 def get_llm_client(settings: Settings) -> LLMClient:

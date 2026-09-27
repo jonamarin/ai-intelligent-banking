@@ -30,6 +30,11 @@ class Settings(BaseSettings):
     kafka_brokers: str = ""
     otel_endpoint: str = ""
 
+    # Reliability (Phase 9, docs/architecture.md § 10): bounded so "dependency down"
+    # fails fast with a clear error instead of hanging on an OS-level TCP timeout.
+    db_connect_timeout_seconds: float = 5.0
+    llm_max_attempts: int = 2
+
 
 @lru_cache
 def get_settings() -> Settings:

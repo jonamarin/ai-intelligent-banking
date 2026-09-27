@@ -51,6 +51,10 @@ class CaseResult:
     # either, so there is nothing for the Policy Engine (Phase 7) to
     # authorize (src/policies/authorization.py).
     authorization: AuthorizationResult | None = None
+    # True when the configured LLMClient failed and this result came from
+    # src/orchestration/fallback.py instead (Phase 9, docs/demo-script.md
+    # Scenario E) — "the degradation itself is an audit event."
+    llm_degraded: bool = False
 
     def to_dict(self) -> dict:
         return {
@@ -63,4 +67,5 @@ class CaseResult:
             "authorization": (
                 dataclasses.asdict(self.authorization) if self.authorization else None
             ),
+            "llm_degraded": self.llm_degraded,
         }

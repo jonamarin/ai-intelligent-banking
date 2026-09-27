@@ -193,19 +193,36 @@ small adversarial test set; several `docs/guardrails.md` § 4 cases (conflicting
 documents, duplicate-transaction detection, customer/account mismatch) are honestly reported as
 not yet coverable rather than silently claimed, per this same risk note.
 
-## Phase 9 — Reliability
+## Phase 9 — Reliability — `IMPLEMENTED` (see docs/project-status.md § Phase 9 detail)
 
 **Objective:** the failure modes in `docs/architecture.md` § 10 are actually handled.
 **Scope:** timeouts, bounded retries with backoff, fallback paths, circuit breakers where
 useful, idempotency verification, the failure scenarios in `docs/demo-script.md`.
 **Deliverables:** each row of `docs/architecture.md` § 10's failure-mode table has a test that
-simulates the dependency failure and asserts the documented fallback occurs.
-**Dependencies:** Phases 6–7. **Tests:** dependency-failure simulation tests (LLM timeout,
-DB down, malformed model output, etc.). **Security:** a failure path must never fail open for
-an authorization-sensitive action (`docs/architecture.md` § 10). **Exit criteria:** Scenario E
-(LLM unavailable) in `docs/demo-script.md` completes via the deterministic fallback path.
-**Risks:** reliability tests are easy to skip under time pressure — don't; they're part of the
-project's actual differentiator per the competition brief ("Build For Failure").
+simulates the dependency failure and asserts the documented fallback occurs. **Delivered as:**
+`src/orchestration/retry.py` (bounded retry + backoff for every LLM call) +
+`src/orchestration/fallback.py` (the deterministic degraded path, Scenario E) +
+`src/models/base.py`'s `connect_timeout` (Database unavailable) +
+`src/policies/gateway.py`'s idempotency-key-aware `persist_decision()` + a new
+`action_executions` table (Scenario J) — see `src/orchestration/README.md` § Reliability and
+`src/policies/README.md` for exactly what was built and verified, including a real bug found
+and fixed mid-implementation (a non-deferred foreign key that made the correct insert ordering
+for idempotency impossible — caught by actually running it against a real database, not by
+inspection). **Dependencies:** Phases 6–7. **Tests:** dependency-failure simulation tests
+implemented (`tests/reliability/`: `test_retry.py`, `test_llm_fallback.py`,
+`test_idempotency.py`, `test_db_timeout.py` — the last verified against a genuinely unreachable
+address, not a mock) and passing. **Security:** a failure path never fails open for an
+authorization-sensitive action — verified directly: a degraded case proposing an
+Irreversible-risk action (a $100,000 transfer) still gets `requires_human_approval=True` through
+the full fallback path (`test_degraded_result_still_goes_through_the_policy_engine`).
+**Exit criteria:** Scenario E (LLM unavailable) in `docs/demo-script.md` completes via the
+deterministic fallback path — met, and also verified against the actual
+`evaluation/golden_cases/dependency_failure.json` fixture (previously inert documentation; its
+`injected_fault` field now genuinely routes it through a failing LLM client and produces the
+fixture's own expected outcome). **Risks:** confirmed as anticipated in one direction and closed
+in another — reliability tests were built in full this phase, not skipped; the fraud-model
+degradation half of Scenario F remains untestable because Phase 4's model was never wired into
+orchestration at all (a pre-existing gap, honestly reported, not new here).
 
 ## Phase 10 — UI
 

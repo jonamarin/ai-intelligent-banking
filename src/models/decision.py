@@ -5,11 +5,16 @@ mandatory here on purpose — a Decision missing its model/policy version is a
 data-integrity bug, not an acceptable partial record. `decision_evidence` is
 a many-to-many link table rather than a JSON array of IDs so referential
 integrity is enforced by the database, not just convention.
+
+`llm_degraded`/`model_degraded` (Phase 9, docs/demo-script.md Scenarios E/F)
+are real columns, not buried in `AuditEvent.payload` — "clearly flagged ...
+in the decision record" per docs/demo-script.md Scenario E's own wording, and
+queryable without parsing JSON.
 """
 
 import datetime as dt
 
-from sqlalchemy import Column, DateTime, ForeignKey, Numeric, String, Table, Text
+from sqlalchemy import Boolean, Column, DateTime, ForeignKey, Numeric, String, Table, Text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from src.models.base import Base
@@ -35,4 +40,6 @@ class Decision(Base):
     prompt_version: Mapped[str | None] = mapped_column(String(50))
     confidence: Mapped[float | None] = mapped_column(Numeric(3, 2))
     explanation: Mapped[str | None] = mapped_column(Text)
+    llm_degraded: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    model_degraded: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     created_at: Mapped[dt.datetime] = mapped_column(DateTime, nullable=False, index=True)

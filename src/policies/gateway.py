@@ -16,6 +16,17 @@ freeze a card or send a transfer — no such system exists in this project
 exactly one thing: the Decision this repository is authoritative over was
 recorded as authorized-and-approved. Wiring a real downstream action gateway
 is out of this project's scope.
+
+**Idempotency (Phase 9, docs/architecture.md § 11, docs/demo-script.md
+Scenario J):** `persist_decision` is keyed by `AuthorizationResult.
+idempotency_key` (defaults to `f"{case_id}-{tool_name}"`,
+`src/tools/action_tools.py`). A retried/duplicated call with the same key
+is detected via the `action_executions` table's PRIMARY KEY — an
+`INSERT ... ON CONFLICT DO NOTHING` race, not a check-then-insert, so this
+holds under concurrent duplicate submissions, not just sequential ones
+(`.claude/rules/database.md`: "structurally hard, not just policy-forbidden").
+A detected duplicate writes exactly one `action.duplicate_detected` audit
+event against the *original* `decision_id` and creates no new Decision row.
 """
 
 import datetime as dt
@@ -23,20 +34,34 @@ import uuid
 from typing import Any, Literal, cast
 
 from sqlalchemy import Table, select
+from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.engine import Engine
 
-from src.models import AuditEvent, Decision, Evidence, FraudCase, HumanReview, decision_evidence
+from src.models import (
+    ActionExecution,
+    AuditEvent,
+    Decision,
+    Evidence,
+    FraudCase,
+    HumanReview,
+    decision_evidence,
+)
 from src.orchestration.case import CaseInput, CaseResult
 from src.security.redaction import redact_value
 
 ReviewAction = Literal["approve", "reject", "modify", "request_more_evidence"]
 
 
-def persist_decision(engine: Engine, case: CaseInput, result: CaseResult, model_name: str) -> str:
+def persist_decision(
+    engine: Engine, case: CaseInput, result: CaseResult, model_name: str
+) -> tuple[str, bool]:
     """Writes one Decision (+ linked evidence, + audit events) for a case
-    that has already run through `flow.run_case`. Returns the new
-    `decision_id`. No-op-safe to call once per case turn — call again for a
-    later turn, don't call it twice for the same result."""
+    that has already run through `flow.run_case`. Returns
+    `(decision_id, was_duplicate)`. Safe to call more than once with an
+    equivalent `result` for the same logical action — a duplicate is
+    detected via `AuthorizationResult.idempotency_key` and returns the
+    *original* `decision_id` with `was_duplicate=True` instead of writing a
+    second Decision (docs/demo-script.md Scenario J)."""
     decision_id = str(uuid.uuid4())
     now = dt.datetime.now(dt.UTC)
     auth = result.authorization
@@ -45,8 +70,48 @@ def persist_decision(engine: Engine, case: CaseInput, result: CaseResult, model_
     evidence_table = cast(Table, Evidence.__table__)
     audit_events_table = cast(Table, AuditEvent.__table__)
     fraud_cases_table = cast(Table, FraudCase.__table__)
+    action_executions_table = cast(Table, ActionExecution.__table__)
 
     with engine.begin() as conn:
+        if auth is not None and auth.idempotency_key is not None:
+            won_race = conn.execute(
+                pg_insert(action_executions_table)
+                .values(
+                    idempotency_key=auth.idempotency_key,
+                    case_id=case.case_id,
+                    tool_name=auth.tool_name,
+                    decision_id=decision_id,
+                    result={"proposed_action": result.action.proposed_action},
+                    created_at=now,
+                )
+                .on_conflict_do_nothing(index_elements=["idempotency_key"])
+                .returning(action_executions_table.c.idempotency_key)
+            ).fetchone()
+
+            if won_race is None:
+                # Someone else already holds this idempotency key — this is
+                # a duplicate. Find the original decision, log it, touch
+                # nothing else (docs/demo-script.md Scenario J: "return the
+                # original result rather than executing a second freeze").
+                original = conn.execute(
+                    select(action_executions_table.c.decision_id).where(
+                        action_executions_table.c.idempotency_key == auth.idempotency_key
+                    )
+                ).fetchone()
+                original_decision_id = original.decision_id if original else decision_id
+                conn.execute(
+                    audit_events_table.insert().values(
+                        audit_event_id=str(uuid.uuid4()),
+                        event_type="action.duplicate_detected",
+                        case_id=case.case_id,
+                        decision_id=original_decision_id,
+                        correlation_id=None,
+                        payload=redact_value({"idempotency_key": auth.idempotency_key}),
+                        created_at=now,
+                    )
+                )
+                return original_decision_id, True
+
         conn.execute(
             decisions_table.insert().values(
                 decision_id=decision_id,
@@ -59,6 +124,7 @@ def persist_decision(engine: Engine, case: CaseInput, result: CaseResult, model_
                 prompt_version=None,
                 confidence=result.intent.confidence,
                 explanation=result.explanation.analyst_explanation,
+                llm_degraded=result.llm_degraded,
                 created_at=now,
             )
         )
@@ -83,6 +149,8 @@ def persist_decision(engine: Engine, case: CaseInput, result: CaseResult, model_
             )
 
         event_types = auth.audit_event_types if auth else _no_tool_audit_events(result)
+        if result.llm_degraded:
+            event_types = [*event_types, "llm.degraded"]
         payload = redact_value(_decision_payload(case, result))
         conn.execute(
             audit_events_table.insert(),
@@ -112,7 +180,7 @@ def persist_decision(engine: Engine, case: CaseInput, result: CaseResult, model_
             )
         )
 
-    return decision_id
+    return decision_id, False
 
 
 def approve_pending_action(

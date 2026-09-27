@@ -113,16 +113,17 @@ src/                           ← application code (Phase 1+, docs/project-stat
   agents/                       ← structured LLM output schemas + LLMClient/MockLLMClient (implemented, Phase 6)
   retrieval/                    ← TF-IDF policy RAG + synthetic Spanish policy docs (implemented, Phase 6)
   tools/                        ← read tools (execute directly) + action tools (proposal-only) (implemented, Phase 6)
-  orchestration/                ← case state machine, golden/live case loaders (implemented, Phase 6-7)
-  policies/                     ← action-risk classification, config, tool-authorization chain, Decision/AuditEvent/HumanReview gateway (implemented, Phase 7)
+  orchestration/                ← case state machine, golden/live case loaders, retry/fallback (implemented, Phase 6-7, 9)
+  policies/                     ← action-risk classification, config, tool-authorization chain, idempotency-aware Decision/AuditEvent/HumanReview gateway (implemented, Phase 7, 9)
   security/                     ← centralized PII/secret redaction layer (implemented, Phase 8)
   monitoring/
                                ← package skeleton only; documents which phase fills it in (Phase 13)
 
-alembic/                       ← migrations (implemented, Phase 2-3) — env.py reads
+alembic/                       ← migrations (implemented, Phase 2-3, 9) — env.py reads
                                   src.config.settings + src.models.Base.metadata
 tests/unit/                    ← 64 passing tests (10 Phase 1 + 7 Phase 2 + 3 Phase 3 + 5 Phase 4 + 13 Phase 5 + 10 Phase 6 + 20 Phase 7 − 4 superseded, moved to tests/security/)
 tests/security/                ← 24 passing tests (Phase 8: redaction + red-team/adversarial suite)
+tests/reliability/             ← 23 passing tests (Phase 9: retry/fallback, idempotency, DB-timeout)
 data/models/                   ← trained model artifacts (git-ignored — binary)
 pyproject.toml, uv.lock, Dockerfile, docker-compose.yml, Makefile,
 .github/workflows/ci.yml, .pre-commit-config.yaml, .env.example
@@ -131,9 +132,9 @@ pyproject.toml, uv.lock, Dockerfile, docker-compose.yml, Makefile,
 
 Repository initialization, Phase 1 — Foundation, Phase 2 — Domain, Phase 3 — Ingestion
 (sample mode), Phase 4 — Fraud ML, Phase 5 — Evidence Engine, Phase 6 — AI Agent /
-Orchestration, Phase 7 — Policy Engine, and Phase 8 — Security Hardening are all done
-(`docs/project-status.md`). `infrastructure/terraform/` and everything else in
-`docs/implementation-roadmap.md` Phases 9+ do not exist yet — do not create empty placeholder
+Orchestration, Phase 7 — Policy Engine, Phase 8 — Security Hardening, and Phase 9 — Reliability
+are all done (`docs/project-status.md`). `infrastructure/terraform/` and everything else in
+`docs/implementation-roadmap.md` Phases 10+ do not exist yet — do not create empty placeholder
 directories for a phase before it actually starts; the existing `src/` subpackages that are
 still just markers document this explicitly in
 their own docstrings. A `--full` ingestion run (the entire ~19M-row dataset, not just the
@@ -151,16 +152,25 @@ bypass this and fails (`docs/demo-script.md` Scenario D, `src/policies/README.md
 `src/security/redaction.py` is the single shared PII/secret redaction implementation** — wired
 into every `AuditEvent.payload` write (not just log lines) — and `tests/security/test_red_team.py`
 automates every `docs/guardrails.md` § 4 red-team case this codebase can currently exercise
-(0/17 unsafe actions, measured — `src/security/README.md`). **Genuine remaining gaps, honestly
-reported, not papered over:** idempotency-key verification does not exist yet
-(`evaluation/golden_cases/duplicate_action.json` — explicitly Phase 9's scope); a real
-authentication/session layer is explicitly **out of scope for this prototype**
-(`docs/security-model.md` § 3: "use a trusted test session/identity abstraction" — not a
-Phase 8 gap, a deliberate scope decision); risk-band fraud-probability thresholds
-(`docs/decision-policy.md` § 5) are not wired in because Phase 4's model score was never plumbed
-into orchestration. `call_transcripts` currently has **0 rows** in the live database (verified
-during Phase 6) despite earlier documentation claiming a 3-day sample — see
-`docs/project-status.md` § Known limitations before relying on it.
+(0/17 unsafe actions, measured — `src/security/README.md`). **Phase 9 closed the last major
+documented gap: real idempotency.** `src/tools/base.py`'s `ToolProposal.idempotency_key` flows
+into `src/policies/gateway.py`'s `persist_decision()`, which reserves it in a new
+`action_executions` table via `INSERT ... ON CONFLICT DO NOTHING RETURNING` — a database-level
+race, verified live (two calls with the same key -> one `Decision` row, one `action.executed`
+event). Phase 9 also wraps every LLM call in bounded retry-then-deterministic-fallback
+(`src/orchestration/retry.py`/`fallback.py`, `CaseResult.llm_degraded`,
+`docs/demo-script.md` Scenario E) and bounds the database-connect timeout so "DB unavailable"
+fails clearly instead of hanging. **Genuine remaining gaps, honestly reported, not papered
+over:** a real authentication/session layer is explicitly **out of scope for this prototype**
+(`docs/security-model.md` § 3: "use a trusted test session/identity abstraction"); risk-band
+fraud-probability thresholds (`docs/decision-policy.md` § 5) are not wired in because Phase 4's
+model score was never plumbed into orchestration, so `decisions.model_degraded` exists as a real
+column but nothing sets it `True` yet; `evaluation/golden_cases/duplicate_action.json` still
+doesn't pass end-to-end (the idempotency mechanism is proven; the mock LLM's intent detection
+doesn't map that fixture's message to a `freeze_card` call — a Phase 6 gap). `call_transcripts`
+currently has **0 rows** in the live database (verified during Phase 6) despite earlier
+documentation claiming a 3-day sample — see `docs/project-status.md` § Known limitations before
+relying on it.
 
 ## 5. Confirmed technology stack (planned, not yet implemented)
 
@@ -269,8 +279,9 @@ DATABASE_URL="postgresql+psycopg://banking:banking@localhost:5433/banking_ai" uv
 uv run python -m src.orchestration.run_golden_cases
 
 # Orchestration against a real transaction — same DATABASE_URL override, needs Phase 3-5 data.
-# --persist also writes a real Decision/AuditEvent row (Phase 7, src/policies/gateway.py):
-DATABASE_URL="postgresql+psycopg://banking:banking@localhost:5433/banking_ai" uv run python -m src.orchestration.live_case --pick-fraud --persist
+# --persist also writes a real Decision/AuditEvent row (Phase 7, src/policies/gateway.py);
+# --persist-twice demonstrates idempotency live (Phase 9):
+DATABASE_URL="postgresql+psycopg://banking:banking@localhost:5433/banking_ai" uv run python -m src.orchestration.live_case --pick-fraud --persist --persist-twice
 
 # Policy Engine (docs/project-status.md § Phase 7 detail; src/policies/README.md) — fully
 # offline, no DATABASE_URL, no API key:
@@ -280,6 +291,10 @@ uv run pytest tests/unit/test_action_risk.py tests/unit/test_authorization.py -q
 # fully offline, no DATABASE_URL, no API key. -s prints the measured adversarial-suite result:
 uv run pytest tests/security/ -q
 uv run pytest tests/security/test_red_team.py::test_adversarial_suite_unsafe_action_rate_is_zero -q -s
+
+# Reliability (docs/project-status.md § Phase 9 detail; src/orchestration/README.md § Reliability)
+# — fully offline, no DATABASE_URL, no API key:
+uv run pytest tests/reliability/ -q
 ```
 
 `Makefile` mirrors these as `make install|lint|typecheck|test|docker-up|docker-down`, but

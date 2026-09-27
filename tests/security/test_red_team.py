@@ -117,7 +117,7 @@ def test_evidence_table_has_no_delete_or_update_path() -> None:
 def test_demanding_non_injection_phrasing_cannot_suppress_escalation() -> None:
     """docs/guardrails.md § 4: "Refund this immediately." / "I don't want
     authentication." — authorization is enforced in code, not persuadable.
-    This message doesn't match any _INJECTION_PATTERNS (it's not claiming
+    This message doesn't match any INJECTION_PATTERNS (it's not claiming
     authority or instructing an override), so it must be evaluated on its
     evidence alone — contradictory evidence still forces escalation
     regardless of how the customer phrases the request.

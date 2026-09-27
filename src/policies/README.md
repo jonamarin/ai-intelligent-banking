@@ -114,18 +114,22 @@ above, not mocked.
   already-resolved case) has no `evaluation/golden_cases/` fixture yet; `case_not_eligible`
   denial is covered only by `tests/unit/test_authorization.py`'s hand-built cases, not a golden
   case. Note this if a Scenario L fixture is added later — the mechanism already exists.
-- **`evaluation/golden_cases/duplicate_action.json` (Scenario J, idempotency)** is not, and
-  cannot yet be, fully satisfied: idempotency-key verification is explicitly
-  `docs/implementation-roadmap.md` Phase 9's scope, not Phase 7's. Separately, the mock LLM's
-  simple keyword-based intent detection doesn't map "por favor congela mi tarjeta" to a
-  `freeze_card` tool call at all (no evidence supports fraud in that fixture, so `propose_action`
-  returns `auto_resolve`) — a Phase 6 intent-detection limitation, not something Phase 7 is
-  scoped to fix. `classify_action_risk("freeze_card")` itself is directly unit-tested and does
-  correctly return `"high"` — the fixture's core action-risk assertion holds in isolation; the
-  full case, end-to-end, does not yet.
+- **`evaluation/golden_cases/duplicate_action.json` (Scenario J, idempotency)**: the
+  idempotency-key mechanism itself is now real (Phase 9, `src/policies/gateway.py`'s
+  `persist_decision()` + the `action_executions` table — see `src/orchestration/README.md`
+  § Reliability for the live-verified proof). What still doesn't hold for *this specific
+  fixture* end-to-end: the mock LLM's simple keyword-based intent detection doesn't map "por
+  favor congela mi tarjeta" to a `freeze_card` tool call at all (no evidence supports fraud in
+  that fixture, so `propose_action` returns `auto_resolve`) — a Phase 6 intent-detection
+  limitation, not something Phase 7/9 fixed or were scoped to fix.
+  `classify_action_risk("freeze_card")` itself is directly unit-tested and does correctly return
+  `"high"`, and the idempotency mechanism is directly proven against a real `create_human_review`
+  duplicate submission — the two halves both work; this one fixture just doesn't wire them
+  together end-to-end.
 - **No real authentication/session layer exists** (`is_authenticated` defaults `True`
-  everywhere) — Phase 8 (Security Hardening) is where a real deny-path for this becomes
-  possible against something other than a hand-set test parameter.
+  everywhere) — `docs/security-model.md` § 3 puts this explicitly out of scope for this
+  prototype ("use a trusted test session/identity abstraction"), confirmed during Phase 8; not a
+  gap any later phase is scoped to close.
 - **`case.created`/`case.resolved` are not their own distinct `AuditEvent.event_type` values.**
   Case creation is currently recorded as `evidence.graph.created` (Phase 5); case resolution is
   the `fraud_cases.status` transition to `resolved` alongside the final `action.executed`/

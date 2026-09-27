@@ -47,6 +47,11 @@ class AuthorizationResult:
     reason: str
     denied_step: DenialStep | None
     audit_event_types: list[str]
+    # Carried through from the ToolProposal so src/policies/gateway.py (Phase
+    # 9) can dedupe a retried/duplicated request without needing the
+    # original ToolProposal object again (docs/architecture.md § 11).
+    tool_name: str = ""
+    idempotency_key: str | None = None
 
 
 def authorize(
@@ -84,6 +89,8 @@ def authorize(
             reason="Session is not authenticated — no tool executes for an unauthenticated case.",
             denied_step="not_authenticated",
             audit_event_types=["risk.assessment.completed", "action.rejected"],
+            tool_name=proposal.tool_name,
+            idempotency_key=proposal.idempotency_key,
         )
 
     # Step 2: is the case eligible for a new action (docs/demo-script.md
@@ -101,6 +108,8 @@ def authorize(
             ),
             denied_step="case_not_eligible",
             audit_event_types=["risk.assessment.completed", "action.rejected"],
+            tool_name=proposal.tool_name,
+            idempotency_key=proposal.idempotency_key,
         )
 
     # Step 3: sufficient evidence? Defense-in-depth: flow.py (Phase 6) already
@@ -120,6 +129,8 @@ def authorize(
             ),
             denied_step="insufficient_evidence",
             audit_event_types=["risk.assessment.completed", "human.review.required"],
+            tool_name=proposal.tool_name,
+            idempotency_key=proposal.idempotency_key,
         )
 
     automation_allowed = {
@@ -151,4 +162,6 @@ def authorize(
         ),
         denied_step=None,
         audit_event_types=audit_event_types,
+        tool_name=proposal.tool_name,
+        idempotency_key=proposal.idempotency_key,
     )
