@@ -4,28 +4,30 @@ Owns: verified current implementation state. This document must never represent 
 functionality as implemented. Update it whenever a meaningful implementation phase
 (`docs/implementation-roadmap.md`) completes, changes, or blocks.
 
-**Last meaningful update:** 2026-09-26 (Phase 5 — Evidence Engine implemented and verified).
+**Last meaningful update:** 2026-09-26 (Phase 6 — AI Agent / Orchestration implemented and
+verified).
 **Last validation:** 2026-09-26 — actually run, not just inspected: `uv run ruff check .`
-(clean), `uv run mypy src` (clean, 51 files), `uv run pytest` (38/38 passed), a 7-day
-`digital_events` ingestion (112,692 events), device derivation against the live database
-(19,065 distinct device fingerprints), and two full evidence graphs built and persisted for
-real transactions — one `is_fraud=true`, one `is_fraud=false` with genuine detected
-contradictions (§ Phase 5 detail below).
+(clean), `uv run mypy src` (clean, 61 files), `uv run pytest` (48/48 passed), all 10
+`evaluation/golden_cases/*.json` fixtures run end-to-end through the orchestration flow in
+`LLM_MODE=mock`, and two real transactions from Phase 5's evidence graphs run end-to-end
+through `live_case.py` against the live database (§ Phase 6 detail below).
 
 ## Current phase
 
-Phase 5 (Evidence Engine) complete. This repository now contains: the original master prompt
-(`prompt.md`), the competition brief (`project_presentation.txt`), the LATAM Bank dataset
+Phase 6 (AI Agent / Orchestration) complete. This repository now contains: the original master
+prompt (`prompt.md`), the competition brief (`project_presentation.txt`), the LATAM Bank dataset
 documentation (two PDFs at the repository root), the raw LATAM Bank dataset itself
 (`data/raw/`, git-ignored, ~5.0 GB — `docs/data-lineage.md` § 1), the Claude Code operating
 system (`CLAUDE.md`, `docs/`, `.claude/`, `evaluation/golden_cases/`), a working application
 foundation (Phase 1), a complete, migrated domain schema (Phase 2), a working, verified
 ingestion pipeline (Phase 3), a trained, evaluated fraud model with a documented, honest
-finding (Phase 4), and now a working Evidence Engine that has built and persisted real
-evidence graphs — with genuine contradiction detection — for real transactions (Phase 5).
-**No orchestration, no policy engine — those are Phases 6+. The evidence engine's own
-direction/confidence values are illustrative heuristics, not approved policy, and this module
-is not wired to any tool that executes an action — see `src/evidence/README.md`.**
+finding (Phase 4), a working Evidence Engine that has built and persisted real evidence graphs
+(Phase 5), and now a working case orchestration state machine — intent extraction, injection
+refusal, next-best-question gating, action proposal, RAG-grounded policy citation, and dual
+(customer/analyst) explanation — verified against both offline fixtures and live evidence
+graphs (Phase 6). **No policy engine — that's Phase 7. Every action this phase produces is a
+proposal only; nothing is executed or persisted, and `flow.py` doesn't even import
+`src/tools/action_tools.py` — see `src/orchestration/README.md`.**
 
 ## Status by roadmap phase (`docs/implementation-roadmap.md`)
 
@@ -36,7 +38,7 @@ is not wired to any tool that executes an action — see `src/evidence/README.md
 | 3 — Synthetic Data / Ingestion | IMPLEMENTED — see § Phase 3 detail below (sample-mode verified, now 90 days for transactions/complaints/call_center_interactions, 7 days for digital_events; `--full` not yet run in this environment, see `src/ingestion/README.md`) |
 | 4 — Fraud ML | IMPLEMENTED — see § Phase 4 detail below (real, honestly-reported near-chance result — see detail) |
 | 5 — Evidence Engine | IMPLEMENTED — see § Phase 5 detail below (real evidence graphs + contradiction detection verified against live data) |
-| 6 — AI Agent | NOT_IMPLEMENTED |
+| 6 — AI Agent | IMPLEMENTED — see § Phase 6 detail below (mock-LLM orchestration verified against all 10 golden cases + 2 live transactions; genuine gaps found and honestly reported, not hidden) |
 | 7 — Policy Engine | NOT_IMPLEMENTED |
 | 8 — Security Hardening | NOT_IMPLEMENTED |
 | 9 — Reliability | NOT_IMPLEMENTED |
@@ -61,7 +63,8 @@ is not wired to any tool that executes an action — see `src/evidence/README.md
 - Raw LATAM Bank dataset downloaded to `data/raw/` from the organizer-provided S3 bucket
   (`docs/data-lineage.md` § 1).
 - **Phase 1 — Foundation**, **Phase 2 — Domain**, **Phase 3 — Ingestion**,
-  **Phase 4 — Fraud ML**, and **Phase 5 — Evidence Engine**, detailed below.
+  **Phase 4 — Fraud ML**, **Phase 5 — Evidence Engine**, and **Phase 6 — AI Agent /
+  Orchestration**, detailed below.
 
 ### Phase 1 detail
 
@@ -327,6 +330,55 @@ every table, same as the Phase 3 verification methodology. Date range: 2026-03-2
   execution — this module only assembles and persists evidence. Its direction/confidence
   values are illustrative heuristics (`docs/decision-policy.md` § 5), not approved policy.
 
+### Phase 6 detail
+
+- `src/agents/`: `schemas.py` (four `extra="forbid"` structured-output types), `llm_client.py`
+  (`LLMClient` Protocol + fully-implemented deterministic `MockLLMClient`; `get_llm_client()`
+  raises `NotImplementedError` for `LLM_MODE=live` — no fabricated provider integration,
+  CLAUDE.md § 7).
+- `src/retrieval/`: 4 synthetic Spanish policy documents (`policy_docs/*.md`) + `policy_rag.py`
+  (TF-IDF retrieval, `SIMILARITY_THRESHOLD = 0.08`, returns `None` rather than a weak guess).
+- `src/tools/`: `read_tools.py` (real DB reads, executed directly) and `action_tools.py` (every
+  function returns a `ToolProposal`, never writes to the DB — not imported by `flow.py`).
+- `src/orchestration/`: `case.py` (shared `CaseInput`/`CaseResult`), `flow.py` (the state
+  machine), `golden_case_loader.py` (fixtures -> `CaseInput`), `live_case.py` (live, DB-backed
+  `EvidenceGraph` -> `CaseInput`), `run_golden_cases.py` (fixture-suite CLI).
+- **A real circularity bug found and fixed before any result was reported**: the first version
+  of `golden_case_loader.py` set `escalation_required` directly from each fixture's own
+  `expected_human_involvement` answer text, making the orchestrator's decisions circular rather
+  than an independent test. Caught immediately after the first run (suspiciously perfect
+  alignment), fixed by deriving it the only legitimate way Phase 6 can offline:
+  `bool(detect_contradictions(items))` — the same shared function the live Evidence Engine
+  uses. Full detail in `src/orchestration/README.md`.
+- **Verified against all 10 `evaluation/golden_cases/*.json` fixtures** in `LLM_MODE=mock`,
+  end-to-end, no errors (`data/reports/golden_case_run.json`). Comparing actual decisions
+  against each fixture's expected outcome (for human review, not auto-graded, per
+  `run_golden_cases.py`'s own stated design choice): 4 of 10 align cleanly, 2 reveal genuine,
+  honestly-reported gaps (`high_value_transfer` needs an amount-threshold rule Phase 6 has no
+  way to compute; `duplicate_action` needs an action-risk classification rule), and the
+  remaining cases hinge on prose nuance no automated check should grade. See
+  `src/orchestration/README.md` for the full table and reasoning — the two gaps are exactly
+  what Phase 7 (Policy Engine) is scoped to close, not a defect in this phase.
+- **Verified against 2 real, live transactions** via `live_case.py` against the real database
+  (the same two transactions Phase 5's evidence graphs were built and persisted for): the clean
+  evidence case produced `auto_resolve`/no approval required, and the case with 2 detected
+  contradictions produced `escalate`/human approval required — the orchestration logic
+  responding correctly to genuinely different real evidence, not two runs of the same trivial
+  case. Both real transactions' customers had zero `call_transcripts` rows in the currently
+  loaded sample, so `customer_message` fell back to the documented placeholder — reported
+  honestly, not hidden.
+- 10 new unit tests: `tests/unit/test_policy_rag.py` (4 — RAG retrieval, including that an
+  injection-phrased query still retrieves the real authentication policy) and
+  `tests/unit/test_flow.py` (6 — mechanically-checkable invariants: injection is always
+  refused, `escalate`/`protect_account` always require human approval, `auto_resolve` is never
+  proposed over a detected contradiction, every golden case runs without raising, and the mock
+  LLM client is deterministic). 48 unit tests total (10 Phase 1 + 7 Phase 2 + 3 Phase 3 + 5
+  Phase 4 + 13 Phase 5 + 10 Phase 6), all passing.
+- **Not done in this phase, by design:** no action is executed or authorized, no `Decision` or
+  `HumanReview` row is persisted, no real LLM provider is called — `flow.py` deliberately
+  doesn't import `src/tools/action_tools.py` at all, so building the orchestrator before Phase
+  7's policy engine exists can't accidentally wire direct execution.
+
 ## In progress
 
 Nothing.
@@ -343,13 +395,23 @@ Everything under "Status by roadmap phase" marked `NOT_IMPLEMENTED` above.
 - Host ports in `docker-compose.yml` are remapped to 8080 (api) and 5433 (db) because 8000 and
   5432 were already in use by other software on the development machine. Adjust back to
   8000/5432 if that's not the case in your environment.
-- Only a bounded recent-date sample of the dataset has been ingested (Phase 3: 90 days for
-  `transactions`/`complaints`/`call_center_interactions`; Phase 5: 7 days for `digital_events`;
-  `call_transcripts` remains at the earliest 3-day sample) — the full ~19M-row dataset has not
-  been loaded. The development machine has very little free RAM available (background runs
-  were killed by out-of-memory conditions multiple times across Phases 4–5 before succeeding
-  on retry) — a `--full` ingestion run needs more headroom than was available here. See
-  `src/ingestion/README.md` § Sample vs. full mode.
+- Only a bounded recent-date sample of the dataset has been ingested (Phase 3/4: 90 days for
+  `transactions`/`complaints`/`call_center_interactions`; Phase 5: 7 days for `digital_events`)
+  — the full ~19M-row dataset has not been loaded. The development machine has very little
+  free RAM available (background runs were killed by out-of-memory conditions multiple times
+  across Phases 4–5 before succeeding on retry) — a `--full` ingestion run needs more headroom
+  than was available here. See `src/ingestion/README.md` § Sample vs. full mode.
+- **`call_transcripts` currently has 0 rows in the live database**, verified directly
+  (`SELECT count(*)` during Phase 6, 2026-09-26) — not the "earliest 3-day sample" this
+  document previously (and incorrectly) claimed. Phase 3's original ingestion did load a 3-day
+  sample of it, but every ingestion run since (Phase 4's 90-day re-run, Phase 5's
+  `digital_events` run) explicitly used `--skip-tables call_transcripts,...` to conserve memory
+  and never re-loaded it, so it is genuinely empty in the database as currently populated.
+  Caught by Phase 6's `live_case.py` live smoke test (§ Phase 6 detail above), which needed
+  `call_transcripts.customer_text` and got none for either real transaction tested — reported
+  honestly there rather than silently assumed present. Reload it with `uv run python -m
+  src.ingestion.run --sample-days 90` (omit `--skip-tables` for it) before relying on real
+  customer-transcript text for a live case.
 - **The trained fraud model performs near chance** (test ROC-AUC 0.46–0.50) on the currently
   loaded sample — this is a genuine, verified finding (not a bug; see § Phase 4 detail), not a
   limitation to silently work around. The Phase 5 Evidence Engine's device derivation (the

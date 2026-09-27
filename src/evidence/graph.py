@@ -385,7 +385,7 @@ def _velocity_evidence(conn: Connection, txn: Any, timestamp: dt.datetime) -> Ev
     )
 
 
-def _detect_contradictions(items: list[EvidenceItem]) -> list[tuple[str, str]]:
+def detect_contradictions(items: list[EvidenceItem]) -> list[tuple[str, str]]:
     """Any two non-neutral evidence items whose directions disagree, both at
     or above CONTRADICTION_CONFIDENCE_THRESHOLD, are a contradiction — a
     blunt, explicit, testable heuristic (docs/implementation-roadmap.md
@@ -437,7 +437,7 @@ def build_evidence_graph(engine: Engine, transaction_id: str) -> EvidenceGraph:
             _complaint_evidence(conn, txn, timestamp),
             _velocity_evidence(conn, txn, timestamp),
         ]
-        contradictions = _detect_contradictions(items)
+        contradictions = detect_contradictions(items)
 
         return EvidenceGraph(
             case_id=_new_case_id(),

@@ -15,7 +15,7 @@ from src.evidence.graph import (
     EvidenceItem,
     _auth_evidence,
     _country_evidence,
-    _detect_contradictions,
+    detect_contradictions,
 )
 from src.models.evidence import EvidenceDirection
 
@@ -96,26 +96,26 @@ def test_contradiction_detected_between_two_conflicting_strong_signals() -> None
     contradiction — not silently resolved by picking one."""
     known_device = _evidence(EvidenceDirection.SUPPORTS_LEGITIMATE, 0.6)
     new_country = _evidence(EvidenceDirection.SUPPORTS_FRAUD, 0.6)
-    contradictions = _detect_contradictions([known_device, new_country])
+    contradictions = detect_contradictions([known_device, new_country])
     assert (known_device.evidence_id, new_country.evidence_id) in contradictions
 
 
 def test_no_contradiction_when_confidence_below_threshold() -> None:
     weak_legit = _evidence(EvidenceDirection.SUPPORTS_LEGITIMATE, 0.1)
     weak_fraud = _evidence(EvidenceDirection.SUPPORTS_FRAUD, 0.1)
-    assert _detect_contradictions([weak_legit, weak_fraud]) == []
+    assert detect_contradictions([weak_legit, weak_fraud]) == []
 
 
 def test_no_contradiction_when_directions_agree() -> None:
     a = _evidence(EvidenceDirection.SUPPORTS_FRAUD, 0.6)
     b = _evidence(EvidenceDirection.SUPPORTS_FRAUD, 0.7)
-    assert _detect_contradictions([a, b]) == []
+    assert detect_contradictions([a, b]) == []
 
 
 def test_neutral_evidence_is_never_flagged_as_contradicting() -> None:
     neutral = _evidence(EvidenceDirection.NEUTRAL, 0.9)
     fraud = _evidence(EvidenceDirection.SUPPORTS_FRAUD, 0.6)
-    assert _detect_contradictions([neutral, fraud]) == []
+    assert detect_contradictions([neutral, fraud]) == []
 
 
 def test_evidence_item_to_dict_shape() -> None:

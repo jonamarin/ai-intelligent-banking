@@ -107,20 +107,36 @@ two real spot-checked cases, not against `evaluation/golden_cases/conflicting_ev
 into the evidence engine's test suite hasn't been done yet) — treat the specific confidence
 thresholds as illustrative, not tuned/validated, until that's done.
 
-## Phase 6 — AI Agent (Conversation + Orchestration)
+## Phase 6 — AI Agent (Conversation + Orchestration) — `IMPLEMENTED` (see docs/project-status.md § Phase 6 detail)
 
 **Objective:** the LLM-driven parts work, in both mock and real-provider mode. **Scope:**
 intent detection, entity extraction, orchestration state machine, structured outputs, tool
 definitions (`prompt.md` § 16), RAG over policy documents, Next-Best-Question gate
 (`docs/architecture.md` § 8). **Deliverables:** a case can be driven end-to-end by a scripted
 mock-mode conversation without any external API key. **Dependencies:** Phases 2, 5.
-**Tests:** structured-output schema tests; tool-call-shape tests; RAG groundedness spot-check.
-**Security:** tool calls are proposals only at this phase — the Action Gateway (Phase 7) is
-what authorizes them; do not let this phase's orchestrator execute anything directly.
+**Delivered as:** `src/agents/` (structured-output schemas, `LLMClient` Protocol +
+`MockLLMClient`), `src/retrieval/` (TF-IDF policy RAG over 4 synthetic Spanish policy docs),
+`src/tools/` (read tools executed directly; action tools return proposals only, never write),
+`src/orchestration/` (the state machine, golden-case and live-case loaders, the fixture-suite
+CLI) — see `src/orchestration/README.md` and `docs/project-status.md` § Phase 6 detail for
+exactly what was built and verified, including a real circularity bug (`escalation_required`
+derived from a fixture's own expected-answer field) found and fixed before any result was
+reported. **Tests:** structured-output schema tests (via `extra="forbid"` Pydantic validation,
+exercised in `tests/unit/test_flow.py`); tool-call-shape tests — implemented
+(`tests/unit/test_policy_rag.py`, 4 tests; `tests/unit/test_flow.py`, 6 tests: injection always
+refused, `escalate`/`protect_account` always require human approval, `auto_resolve` never
+proposed over a contradiction, every golden case runs without raising, mock client is
+deterministic) and passing. **Security:** tool calls are proposals only at this phase —
+`flow.py` doesn't import `src/tools/action_tools.py` at all, so the Action Gateway (Phase 7) is
+the only thing that can ever authorize them; verified by inspection, not just by convention.
 **Exit criteria:** `LLM_MODE=mock` produces deterministic, reproducible output for each
-`evaluation/golden_cases/` scenario. **Risks:** building the orchestrator before the policy
-engine (Phase 7) exists risks accidentally wiring direct execution — sequence matters here;
-don't skip ahead.
+`evaluation/golden_cases/` scenario — met (`data/reports/golden_case_run.json`, all 10 run
+without error) and also verified against 2 real live transactions via `live_case.py`.
+**Risks:** confirmed as anticipated — evidence-only escalation reasoning correctly handles
+contradiction-driven cases but cannot satisfy scenarios requiring escalation for other reasons
+(an amount threshold, an action's inherent risk classification); 2 of 10 golden cases expose
+this gap honestly rather than being made to look correct. This is exactly the gap Phase 7 is
+scoped to close, not a defect to work around here.
 
 ## Phase 7 — Policy Engine
 
