@@ -1,0 +1,69 @@
+{
+  "case_id": "CASE-3A41F43A3A6549EDADD4",
+  "customer_id": "CLI-B2M3A0C5YJFL",
+  "transaction_id": "TRX-MXCWNPT6UVBUMBBVOPWM",
+  "created_at": "2026-09-27T01:50:05.765496+00:00",
+  "evidence": [
+    {
+      "evidence_id": "2497c426-2b5b-49aa-a058-87ed4fcd006c",
+      "source": "digital_events",
+      "type": "device_history",
+      "value": "no_digital_session_found",
+      "direction": "neutral",
+      "confidence": null,
+      "timestamp": "2026-06-18T01:09:12",
+      "provenance": "No digital_events row within +/-2h of the transaction for this customer \u2014 channel may not produce digital events (e.g. POS/ATM/Branch), or no session was captured. Represented as Unknown, not assumed either way."
+    },
+    {
+      "evidence_id": "289fe5aa-dbc1-425a-9a30-cdb5cc9426dd",
+      "source": "transactions/customers",
+      "type": "country_deviation",
+      "value": "Colombia == Colombia",
+      "direction": "supports_legitimate",
+      "confidence": 0.4,
+      "timestamp": "2026-06-18T01:09:12",
+      "provenance": "transaction_country matches the customer's registered country."
+    },
+    {
+      "evidence_id": "1ed25058-7050-4cd9-ba56-9acbdd53aa9c",
+      "source": "transactions",
+      "type": "amount_deviation",
+      "value": "z=-0.98",
+      "direction": "supports_legitimate",
+      "confidence": 0.4,
+      "timestamp": "2026-06-18T01:09:12",
+      "provenance": "Amount 9491.99 USD is within 1 std of this customer's prior mean (384584.35, n=2)."
+    },
+    {
+      "evidence_id": "b221dcdf-12ef-4a83-86d5-74ca952d5df6",
+      "source": "transactions",
+      "type": "auth_result",
+      "value": "status=Approved, response_code=0",
+      "direction": "supports_legitimate",
+      "confidence": 0.3,
+      "timestamp": "2026-06-18T01:09:12",
+      "provenance": "Transaction authenticated/authorized successfully."
+    },
+    {
+      "evidence_id": "7388d647-b6e4-4607-a022-829764567cd8",
+      "source": "complaints",
+      "type": "historical_dispute_rate",
+      "value": "prior_complaints=0",
+      "direction": "neutral",
+      "confidence": 0.1,
+      "timestamp": "2026-06-18T01:09:12",
+      "provenance": "No prior complaints on record for this customer."
+    },
+    {
+      "evidence_id": "6b20acf6-7b9f-42dc-b1e6-87fbfe021ee5",
+      "source": "transactions",
+      "type": "velocity",
+      "value": "txn_count_24h=0",
+      "direction": "neutral",
+      "confidence": 0.1,
+      "timestamp": "2026-06-18T01:09:12",
+      "provenance": "0 other transaction(s) by this customer in the prior 24 hours \u2014 unremarkable."
+    }
+  ],
+  "contradictions": []
+}

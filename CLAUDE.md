@@ -109,12 +109,13 @@ src/                           ← application code (Phase 1+, docs/project-stat
   models/                      ← SQLAlchemy models + Pydantic schemas (implemented, Phase 2-3)
   ingestion/                    ← CSV -> Postgres loader + data-quality report (implemented, Phase 3)
   ml/                           ← fraud model: features, baseline, XGBoost, evaluation (implemented, Phase 4)
-  agents/orchestration/policies/tools/evidence/retrieval/security/monitoring/
+  evidence/                     ← device derivation, evidence graph, contradiction detection (implemented, Phase 5)
+  agents/orchestration/policies/tools/retrieval/security/monitoring/
                                ← package skeletons only; each documents which phase fills it in
 
 alembic/                       ← migrations (implemented, Phase 2-3) — env.py reads
                                   src.config.settings + src.models.Base.metadata
-tests/unit/                    ← 25 passing tests (10 Phase 1 + 7 Phase 2 + 3 Phase 3 + 5 Phase 4)
+tests/unit/                    ← 38 passing tests (10 Phase 1 + 7 Phase 2 + 3 Phase 3 + 5 Phase 4 + 13 Phase 5)
 data/models/                   ← trained model artifacts (git-ignored — binary)
 pyproject.toml, uv.lock, Dockerfile, docker-compose.yml, Makefile,
 .github/workflows/ci.yml, .pre-commit-config.yaml, .env.example
@@ -122,15 +123,20 @@ pyproject.toml, uv.lock, Dockerfile, docker-compose.yml, Makefile,
 ```
 
 Repository initialization, Phase 1 — Foundation, Phase 2 — Domain, Phase 3 — Ingestion
-(sample mode), and Phase 4 — Fraud ML are all done (`docs/project-status.md`). The evidence
-engine, orchestration, the policy engine, `infrastructure/terraform/`, and everything else in
-`docs/implementation-roadmap.md` Phases 5+ do not exist yet — do not create empty placeholder
-directories for a phase before it actually starts; the existing `src/` subpackages that are
-still just markers document this explicitly in their own docstrings. A `--full` ingestion run
-(the entire ~19M-row dataset, not just the verified recent-date sample) has also not been done
-— see `src/ingestion/README.md` § Sample vs. full mode before attempting it. **The trained
-fraud model performs near chance on the currently loaded sample — a real, verified finding, not
-a bug** (`docs/project-status.md` § Phase 4 detail, `src/ml/README.md`).
+(sample mode), Phase 4 — Fraud ML, and Phase 5 — Evidence Engine are all done
+(`docs/project-status.md`). Orchestration, the policy engine, `infrastructure/terraform/`, and
+everything else in `docs/implementation-roadmap.md` Phases 6+ do not exist yet — do not create
+empty placeholder directories for a phase before it actually starts; the existing `src/`
+subpackages that are still just markers document this explicitly in their own docstrings. A
+`--full` ingestion run (the entire ~19M-row dataset, not just the verified recent-date sample)
+has also not been done — see `src/ingestion/README.md` § Sample vs. full mode before
+attempting it. **The trained fraud model performs near chance on the currently loaded sample —
+a real, verified finding, not a bug** (`docs/project-status.md` § Phase 4 detail,
+`src/ml/README.md`). **The Evidence Engine's `device_id` is a documented heuristic proxy, not
+a true device fingerprint** — the dataset has no persistent device identifier
+(`src/evidence/README.md`). Evidence Engine direction/confidence values are illustrative
+heuristics, never approved policy, and this module must never be wired to a tool that executes
+an action (`docs/decision-policy.md` § 5).
 
 ## 5. Confirmed technology stack (planned, not yet implemented)
 
@@ -227,6 +233,12 @@ DATABASE_URL="postgresql+psycopg://banking:banking@localhost:5433/banking_ai" uv
 # Fraud model training (docs/project-status.md § Phase 4 detail; src/ml/README.md) — same
 # DATABASE_URL override, run after ingestion:
 DATABASE_URL="postgresql+psycopg://banking:banking@localhost:5433/banking_ai" uv run python -m src.ml.train
+
+# Evidence Engine (docs/project-status.md § Phase 5 detail; src/evidence/README.md) — same
+# DATABASE_URL override; also needs digital_events ingested (--skip-tables the others to save
+# memory) before --refresh-devices has anything to derive from:
+DATABASE_URL="postgresql+psycopg://banking:banking@localhost:5433/banking_ai" uv run python -m src.ingestion.run --sample-days 7 --skip-tables call_center_interactions,call_transcripts,complaints
+DATABASE_URL="postgresql+psycopg://banking:banking@localhost:5433/banking_ai" uv run python -m src.evidence.build_case --refresh-devices --pick-fraud
 ```
 
 `Makefile` mirrors these as `make install|lint|typecheck|test|docker-up|docker-down`, but

@@ -1,7 +1,7 @@
 {
-  "run_started_at": "2026-09-26T17:12:37.020806+00:00",
+  "run_started_at": "2026-09-27T01:26:22.320207+00:00",
   "mode": "sample",
-  "sample_days": 90,
+  "sample_days": 7,
   "tables": [
     {
       "table_name": "customers",
@@ -21,8 +21,8 @@
         "marital_status": 0.0797,
         "education_level": 0.11968
       },
-      "rows_loaded": 150000,
-      "elapsed_seconds": 377.6720000000205,
+      "rows_loaded": 0,
+      "elapsed_seconds": 103.03099999995902,
       "required_field_null_rows_dropped": 0,
       "flags": [
         "column 'landline_phone' null rate 50.0% exceeds 2.0x the documented ~5% baseline",
@@ -46,8 +46,8 @@
         "days_past_due": 0.686625,
         "last_transaction_date": 0.2356925
       },
-      "rows_loaded": 399994,
-      "elapsed_seconds": 397.51600000006147,
+      "rows_loaded": 0,
+      "elapsed_seconds": 417.6720000000205,
       "required_field_null_rows_dropped": 0,
       "flags": [
         "column 'credit_limit' null rate 68.7% exceeds 2.0x the documented ~5% baseline",
@@ -63,107 +63,83 @@
       "duplicates_removed": 0,
       "orphaned_fk_rows_skipped": {},
       "null_rate_by_column": {},
-      "rows_loaded": 13164,
-      "elapsed_seconds": 5.062000000150874,
+      "rows_loaded": 0,
+      "elapsed_seconds": 5.047000000020489,
       "required_field_null_rows_dropped": 0,
       "flags": []
     },
     {
       "table_name": "transactions",
-      "source_row_count": 371001,
-      "duplicates_removed": 0,
-      "orphaned_fk_rows_skipped": {
-        "product_id": 3
-      },
-      "null_rate_by_column": {
-        "transaction_category": 0.6082193848534101,
-        "amount_usd": 0.5737262163713844,
-        "branch_id": 0.6866046183163926,
-        "merchant_name": 0.7681219188088442,
-        "merchant_category": 0.7681327004509422,
-        "transaction_city": 0.09944986671194957,
-        "response_code": 0.04995134784003278,
-        "fraud_score": 0.19957089064449962,
-        "latitude": 0.8063940528462188,
-        "longitude": 0.8062404144463222
-      },
-      "rows_loaded": 370998,
-      "elapsed_seconds": 456.8279999999795,
-      "required_field_null_rows_dropped": 0,
-      "flags": [
-        "column 'transaction_category' null rate 60.8% exceeds 2.0x the documented ~5% baseline",
-        "column 'amount_usd' null rate 57.4% exceeds 2.0x the documented ~5% baseline",
-        "column 'branch_id' null rate 68.7% exceeds 2.0x the documented ~5% baseline",
-        "column 'merchant_name' null rate 76.8% exceeds 2.0x the documented ~5% baseline",
-        "column 'merchant_category' null rate 76.8% exceeds 2.0x the documented ~5% baseline",
-        "column 'fraud_score' null rate 20.0% exceeds 2.0x the documented ~5% baseline",
-        "column 'latitude' null rate 80.6% exceeds 2.0x the documented ~5% baseline",
-        "column 'longitude' null rate 80.6% exceeds 2.0x the documented ~5% baseline"
-      ]
-    },
-    {
-      "table_name": "call_center_interactions",
-      "source_row_count": 56125,
+      "source_row_count": 29159,
       "duplicates_removed": 0,
       "orphaned_fk_rows_skipped": {},
       "null_rate_by_column": {
-        "duration_seconds": 0.14070378619153676,
-        "wait_time_seconds": 0.29988418708240533,
-        "customer_detected_accent": 0.2989042316258352,
-        "agent_used_accent": 0.2989042316258352,
-        "mentioned_products": 0.601478841870824
+        "transaction_category": 0.6168249939984224,
+        "amount_usd": 0.5702184574230941,
+        "branch_id": 0.6851400939675572,
+        "merchant_name": 0.774683631125896,
+        "merchant_category": 0.7749922836859975,
+        "transaction_city": 0.10212970266470044,
+        "response_code": 0.051167735519050725,
+        "fraud_score": 0.20237319523989164,
+        "latitude": 0.8081895812613601,
+        "longitude": 0.8088754758393635
       },
-      "rows_loaded": 56125,
-      "elapsed_seconds": 110.48499999986961,
+      "rows_loaded": 0,
+      "elapsed_seconds": 40.65599999995902,
       "required_field_null_rows_dropped": 0,
       "flags": [
-        "column 'duration_seconds' null rate 14.1% exceeds 2.0x the documented ~5% baseline",
-        "column 'wait_time_seconds' null rate 30.0% exceeds 2.0x the documented ~5% baseline",
-        "column 'customer_detected_accent' null rate 29.9% exceeds 2.0x the documented ~5% baseline",
-        "column 'agent_used_accent' null rate 29.9% exceeds 2.0x the documented ~5% baseline",
-        "column 'mentioned_products' null rate 60.1% exceeds 2.0x the documented ~5% baseline"
+        "column 'transaction_category' null rate 61.7% exceeds 2.0x the documented ~5% baseline",
+        "column 'amount_usd' null rate 57.0% exceeds 2.0x the documented ~5% baseline",
+        "column 'branch_id' null rate 68.5% exceeds 2.0x the documented ~5% baseline",
+        "column 'merchant_name' null rate 77.5% exceeds 2.0x the documented ~5% baseline",
+        "column 'merchant_category' null rate 77.5% exceeds 2.0x the documented ~5% baseline",
+        "column 'transaction_city' null rate 10.2% exceeds 2.0x the documented ~5% baseline",
+        "column 'fraud_score' null rate 20.2% exceeds 2.0x the documented ~5% baseline",
+        "column 'latitude' null rate 80.8% exceeds 2.0x the documented ~5% baseline",
+        "column 'longitude' null rate 80.9% exceeds 2.0x the documented ~5% baseline"
       ]
     },
     {
-      "table_name": "complaints",
-      "source_row_count": 5492,
+      "table_name": "digital_events",
+      "source_row_count": 112692,
       "duplicates_removed": 0,
       "orphaned_fk_rows_skipped": {},
       "null_rate_by_column": {
-        "subcategory": 0.09231609613983977,
-        "affected_product_id": 0.3384923525127458,
-        "related_branch_id": 0.7217771303714494,
-        "origin_interaction_id": 1.0,
-        "claimed_amount": 0.6798980335032775,
-        "currency": 0.6793517844136926,
-        "assigned_agent_id": 0.33794610342316095,
-        "assignment_date": 0.33794610342316095,
-        "first_response_date": 0.3898397669337218,
-        "resolution_date": 0.7714857975236707,
-        "closing_date": 0.9619446467589221,
-        "resolution_days": 0.7669337217771304,
-        "resolution": 0.7713037144938092,
-        "compensation_granted": 0.9328113619810634,
-        "resolution_satisfaction": 0.9630371449380918
+        "customer_id": 0.2407269371383949,
+        "platform": 0.049994675753380895,
+        "browser": 0.6291129805132574,
+        "app_version": 0.4204291342774997,
+        "page_url": 0.050101160685762966,
+        "page_title": 0.0490629325950378,
+        "action": 0.09968764419834593,
+        "element_id": 0.14872395556028822,
+        "product_id": 0.9087867816703936,
+        "event_value": 0.9473520746814326,
+        "duration_seconds": 0.63388705498172,
+        "ip_address": 0.05093529265608916,
+        "ip_city": 0.28208745962446313,
+        "referrer": 0.9327725126894545,
+        "utm_source": 0.946393710289994,
+        "utm_medium": 0.9462251091470557,
+        "utm_campaign": 0.9464292052674547
       },
-      "rows_loaded": 5492,
-      "elapsed_seconds": 15.171999999787658,
+      "rows_loaded": 112692,
+      "elapsed_seconds": 187.0460000000894,
       "required_field_null_rows_dropped": 0,
       "flags": [
-        "column 'affected_product_id' null rate 33.8% exceeds 2.0x the documented ~5% baseline",
-        "column 'related_branch_id' null rate 72.2% exceeds 2.0x the documented ~5% baseline",
-        "column 'origin_interaction_id' null rate 100.0% exceeds 2.0x the documented ~5% baseline",
-        "column 'claimed_amount' null rate 68.0% exceeds 2.0x the documented ~5% baseline",
-        "column 'currency' null rate 67.9% exceeds 2.0x the documented ~5% baseline",
-        "column 'assigned_agent_id' null rate 33.8% exceeds 2.0x the documented ~5% baseline",
-        "column 'assignment_date' null rate 33.8% exceeds 2.0x the documented ~5% baseline",
-        "column 'first_response_date' null rate 39.0% exceeds 2.0x the documented ~5% baseline",
-        "column 'resolution_date' null rate 77.1% exceeds 2.0x the documented ~5% baseline",
-        "column 'closing_date' null rate 96.2% exceeds 2.0x the documented ~5% baseline",
-        "column 'resolution_days' null rate 76.7% exceeds 2.0x the documented ~5% baseline",
-        "column 'resolution' null rate 77.1% exceeds 2.0x the documented ~5% baseline",
-        "column 'compensation_granted' null rate 93.3% exceeds 2.0x the documented ~5% baseline",
-        "column 'resolution_satisfaction' null rate 96.3% exceeds 2.0x the documented ~5% baseline"
+        "column 'customer_id' null rate 24.1% exceeds 2.0x the documented ~5% baseline",
+        "column 'browser' null rate 62.9% exceeds 2.0x the documented ~5% baseline",
+        "column 'app_version' null rate 42.0% exceeds 2.0x the documented ~5% baseline",
+        "column 'element_id' null rate 14.9% exceeds 2.0x the documented ~5% baseline",
+        "column 'product_id' null rate 90.9% exceeds 2.0x the documented ~5% baseline",
+        "column 'event_value' null rate 94.7% exceeds 2.0x the documented ~5% baseline",
+        "column 'duration_seconds' null rate 63.4% exceeds 2.0x the documented ~5% baseline",
+        "column 'ip_city' null rate 28.2% exceeds 2.0x the documented ~5% baseline",
+        "column 'referrer' null rate 93.3% exceeds 2.0x the documented ~5% baseline",
+        "column 'utm_source' null rate 94.6% exceeds 2.0x the documented ~5% baseline",
+        "column 'utm_medium' null rate 94.6% exceeds 2.0x the documented ~5% baseline",
+        "column 'utm_campaign' null rate 94.6% exceeds 2.0x the documented ~5% baseline"
       ]
     }
   ],
@@ -173,7 +149,8 @@
     "marketing_campaigns",
     "campaign_sends",
     "satisfaction_surveys",
+    "call_center_interactions",
     "call_transcripts",
-    "digital_events"
+    "complaints"
   ]
 }

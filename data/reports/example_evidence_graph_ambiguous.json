@@ -1,0 +1,78 @@
+{
+  "case_id": "CASE-413270E91C874B888FDA",
+  "customer_id": "CLI-0HXYIRKA0WJO",
+  "transaction_id": "TRX-SMPYV51IQT9JPNQ56BMR",
+  "created_at": "2026-09-27T01:51:25.683926+00:00",
+  "evidence": [
+    {
+      "evidence_id": "9b17f243-5134-45e7-920c-fb0f503cca21",
+      "source": "devices",
+      "type": "device_history",
+      "value": "known_device(customer_count=1)",
+      "direction": "supports_legitimate",
+      "confidence": 0.6,
+      "timestamp": "2026-06-12T16:22:24",
+      "provenance": "Device e4e2c0530be0... seen for this customer before 2026-06-12 16:22:24 (first seen 2026-06-12 14:46:51)."
+    },
+    {
+      "evidence_id": "3c087700-d6e8-40de-95b4-6982dcaf4d4d",
+      "source": "transactions/customers",
+      "type": "country_deviation",
+      "value": "Colombia == Colombia",
+      "direction": "supports_legitimate",
+      "confidence": 0.4,
+      "timestamp": "2026-06-12T16:22:24",
+      "provenance": "transaction_country matches the customer's registered country."
+    },
+    {
+      "evidence_id": "3aae3271-f5e2-4f47-9423-b9d105d098c5",
+      "source": "transactions",
+      "type": "amount_deviation",
+      "value": "z=4.34",
+      "direction": "supports_fraud",
+      "confidence": 0.7344517219946065,
+      "timestamp": "2026-06-12T16:22:24",
+      "provenance": "Amount 1993.51 USD is 4.3 standard deviations above this customer's prior mean (378.60, n=3)."
+    },
+    {
+      "evidence_id": "5d937e2f-e96d-46a4-983f-db09a008a928",
+      "source": "transactions",
+      "type": "auth_result",
+      "value": "status=Approved, response_code=0",
+      "direction": "supports_legitimate",
+      "confidence": 0.3,
+      "timestamp": "2026-06-12T16:22:24",
+      "provenance": "Transaction authenticated/authorized successfully."
+    },
+    {
+      "evidence_id": "65058688-8334-45d5-b058-8a5e7b6ac74b",
+      "source": "complaints",
+      "type": "historical_dispute_rate",
+      "value": "prior_complaints=0",
+      "direction": "neutral",
+      "confidence": 0.1,
+      "timestamp": "2026-06-12T16:22:24",
+      "provenance": "No prior complaints on record for this customer."
+    },
+    {
+      "evidence_id": "c97c5be0-2d5e-46b7-a2b2-c6a901458ef2",
+      "source": "transactions",
+      "type": "velocity",
+      "value": "txn_count_24h=0",
+      "direction": "neutral",
+      "confidence": 0.1,
+      "timestamp": "2026-06-12T16:22:24",
+      "provenance": "0 other transaction(s) by this customer in the prior 24 hours \u2014 unremarkable."
+    }
+  ],
+  "contradictions": [
+    [
+      "9b17f243-5134-45e7-920c-fb0f503cca21",
+      "3aae3271-f5e2-4f47-9423-b9d105d098c5"
+    ],
+    [
+      "3c087700-d6e8-40de-95b4-6982dcaf4d4d",
+      "3aae3271-f5e2-4f47-9423-b9d105d098c5"
+    ]
+  ]
+}

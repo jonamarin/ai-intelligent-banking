@@ -83,19 +83,29 @@ own `fraud_score` field clearly separates the classes even though none of the 15
 features do — see `src/ml/README.md` for the full diagnostic and the leading hypothesis
 (device/IP signal via Phase 5's `Device` derivation, not yet loaded).
 
-## Phase 5 — Evidence Engine
+## Phase 5 — Evidence Engine — `IMPLEMENTED` (see docs/project-status.md § Phase 5 detail)
 
 **Objective:** the evidence graph is real. **Scope:** evidence extraction from retrieved data,
 graph construction (`docs/domain-model.md` § Evidence Graph), provenance stamping,
 contradiction detection, uncertainty representation. **Deliverables:** given a case, produce a
 structured evidence graph with `direction`/`confidence`/`provenance` on every node/edge.
-**Dependencies:** Phases 2–4. **Tests:** unit tests per evidence-extraction rule; a
-contradiction-detection test using two conflicting signals. **Security:** evidence records are
-append-only — no update/delete tool exists (`docs/guardrails.md` § 4, "delete the fraud
-evidence" red-team case). **Exit criteria:** the example graph shape in `prompt.md` § 10 is
-reproducible from real data for at least one seeded case. **Risks:** contradiction detection
-is easy to over- or under-trigger; validate against hand-authored golden cases
-(`evaluation/golden_cases/conflicting_evidence.json`) before trusting it.
+**Delivered as:** `src/evidence/` (device derivation, graph construction, persistence, CLI) —
+see `src/evidence/README.md` and `docs/project-status.md` § Phase 5 detail for exactly what
+was built and verified. **Dependencies:** Phases 2–4. **Tests:** unit tests per
+evidence-extraction rule; a contradiction-detection test using two conflicting signals —
+implemented (`tests/unit/test_evidence_graph.py`, 13 tests) and passing, including the
+required contradiction test using two genuinely conflicting signals. **Security:** evidence
+records are append-only — no update/delete tool exists (`docs/guardrails.md` § 4, "delete the
+fraud evidence" red-team case) — enforced by never calling UPDATE/DELETE on the table, not
+just by policy. **Exit criteria:** the example graph shape in `prompt.md` § 10 is reproducible
+from real data for at least one seeded case — met, and exceeded: two real cases (one
+`is_fraud=true`, one `is_fraud=false` with genuine detected contradictions), not a single
+cherry-picked or synthetic example. **Risks:** confirmed as anticipated — contradiction
+detection's threshold-based heuristic was verified only against hand-crafted unit tests and
+two real spot-checked cases, not against `evaluation/golden_cases/conflicting_evidence.json`
+(that golden case is a hand-authored fixture, not live data, and wiring golden-case validation
+into the evidence engine's test suite hasn't been done yet) — treat the specific confidence
+thresholds as illustrative, not tuned/validated, until that's done.
 
 ## Phase 6 — AI Agent (Conversation + Orchestration)
 

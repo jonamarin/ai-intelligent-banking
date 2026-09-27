@@ -33,7 +33,19 @@ class Evidence(Base):
     type: Mapped[str] = mapped_column(String(100), nullable=False)
     value: Mapped[str | None] = mapped_column(Text)
     direction: Mapped[EvidenceDirection] = mapped_column(
-        Enum(EvidenceDirection, native_enum=False, length=30, validate_strings=True),
+        Enum(
+            EvidenceDirection,
+            native_enum=False,
+            length=30,
+            validate_strings=True,
+            # Store the lowercase .value ("supports_fraud") to match
+            # docs/domain-model.md's documented direction strings — without
+            # this, SQLAlchemy stores the Python member NAME
+            # ("SUPPORTS_FRAUD") instead, a real inconsistency caught when
+            # inspecting the first real rows written by the Evidence Engine
+            # (docs/project-status.md § Phase 5 detail).
+            values_callable=lambda enum_cls: [member.value for member in enum_cls],
+        ),
         nullable=False,
     )
     confidence: Mapped[float | None] = mapped_column(Numeric(3, 2))

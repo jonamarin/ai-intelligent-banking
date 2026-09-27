@@ -4,25 +4,28 @@ Owns: verified current implementation state. This document must never represent 
 functionality as implemented. Update it whenever a meaningful implementation phase
 (`docs/implementation-roadmap.md`) completes, changes, or blocks.
 
-**Last meaningful update:** 2026-09-26 (Phase 4 — Fraud ML implemented and verified).
+**Last meaningful update:** 2026-09-26 (Phase 5 — Evidence Engine implemented and verified).
 **Last validation:** 2026-09-26 — actually run, not just inspected: `uv run ruff check .`
-(clean), `uv run mypy src` (clean, 47 files), `uv run pytest` (25/25 passed), an expanded
-90-day ingestion re-run (see § Phase 3 detail update below), and a full fraud-model training
-run against the live database producing real evaluation metrics and two saved model artifacts
-(§ Phase 4 detail below) — reproduced twice with identical results.
+(clean), `uv run mypy src` (clean, 51 files), `uv run pytest` (38/38 passed), a 7-day
+`digital_events` ingestion (112,692 events), device derivation against the live database
+(19,065 distinct device fingerprints), and two full evidence graphs built and persisted for
+real transactions — one `is_fraud=true`, one `is_fraud=false` with genuine detected
+contradictions (§ Phase 5 detail below).
 
 ## Current phase
 
-Phase 4 (Fraud ML) complete. This repository now contains: the original master prompt
+Phase 5 (Evidence Engine) complete. This repository now contains: the original master prompt
 (`prompt.md`), the competition brief (`project_presentation.txt`), the LATAM Bank dataset
 documentation (two PDFs at the repository root), the raw LATAM Bank dataset itself
 (`data/raw/`, git-ignored, ~5.0 GB — `docs/data-lineage.md` § 1), the Claude Code operating
 system (`CLAUDE.md`, `docs/`, `.claude/`, `evaluation/golden_cases/`), a working application
 foundation (Phase 1), a complete, migrated domain schema (Phase 2), a working, verified
-ingestion pipeline (Phase 3, now with a 90-day sample loaded), and a trained, evaluated fraud
-model with a documented, honest finding (Phase 4).
-**No orchestration, no evidence engine, no policy engine — those are Phases 5+. Only a bounded
-recent-date sample has been loaded, not the full ~19M-row dataset — see § Phase 3 detail.**
+ingestion pipeline (Phase 3), a trained, evaluated fraud model with a documented, honest
+finding (Phase 4), and now a working Evidence Engine that has built and persisted real
+evidence graphs — with genuine contradiction detection — for real transactions (Phase 5).
+**No orchestration, no policy engine — those are Phases 6+. The evidence engine's own
+direction/confidence values are illustrative heuristics, not approved policy, and this module
+is not wired to any tool that executes an action — see `src/evidence/README.md`.**
 
 ## Status by roadmap phase (`docs/implementation-roadmap.md`)
 
@@ -30,9 +33,9 @@ recent-date sample has been loaded, not the full ~19M-row dataset — see § Pha
 |---|---|
 | 1 — Foundation | IMPLEMENTED — see § Phase 1 detail below |
 | 2 — Domain | IMPLEMENTED — see § Phase 2 detail below |
-| 3 — Synthetic Data / Ingestion | IMPLEMENTED — see § Phase 3 detail below (sample-mode verified, now 90 days for transactions/complaints/call_center_interactions; `--full` not yet run in this environment, see `src/ingestion/README.md`) |
+| 3 — Synthetic Data / Ingestion | IMPLEMENTED — see § Phase 3 detail below (sample-mode verified, now 90 days for transactions/complaints/call_center_interactions, 7 days for digital_events; `--full` not yet run in this environment, see `src/ingestion/README.md`) |
 | 4 — Fraud ML | IMPLEMENTED — see § Phase 4 detail below (real, honestly-reported near-chance result — see detail) |
-| 5 — Evidence Engine | NOT_IMPLEMENTED |
+| 5 — Evidence Engine | IMPLEMENTED — see § Phase 5 detail below (real evidence graphs + contradiction detection verified against live data) |
 | 6 — AI Agent | NOT_IMPLEMENTED |
 | 7 — Policy Engine | NOT_IMPLEMENTED |
 | 8 — Security Hardening | NOT_IMPLEMENTED |
@@ -57,8 +60,8 @@ recent-date sample has been loaded, not the full ~19M-row dataset — see § Pha
   fabricated (`docs/product-requirements.md` § 13).
 - Raw LATAM Bank dataset downloaded to `data/raw/` from the organizer-provided S3 bucket
   (`docs/data-lineage.md` § 1).
-- **Phase 1 — Foundation**, **Phase 2 — Domain**, **Phase 3 — Ingestion**, and
-  **Phase 4 — Fraud ML**, detailed below.
+- **Phase 1 — Foundation**, **Phase 2 — Domain**, **Phase 3 — Ingestion**,
+  **Phase 4 — Fraud ML**, and **Phase 5 — Evidence Engine**, detailed below.
 
 ### Phase 1 detail
 
@@ -273,6 +276,57 @@ every table, same as the Phase 3 verification methodology. Date range: 2026-03-2
   to Phase 11; this phase only compares the logistic-regression baseline against XGBoost, per
   `docs/model-evaluation.md` § 4's actual scope for Phase 4.
 
+### Phase 5 detail
+
+- `src/evidence/`: `device.py` (Device derivation from `digital_events` — a documented
+  heuristic fingerprint, `sha256(ip_address, platform, browser)`, since the dataset has no
+  persistent device-fingerprint column; missing `ip_address` → `Unknown`, never a fabricated
+  ID), `graph.py` (six evidence-extraction rules — device history, country deviation, amount
+  deviation, auth result, historical dispute rate, velocity — plus contradiction detection),
+  `persist.py` (writes a `FraudCase` + append-only `Evidence` rows + one `AuditEvent`;
+  deliberately does not set `risk_score` or create a `Decision` — that's Phase 6/7's job, not
+  half-integrated here), `build_case.py` (CLI).
+- **Ingested `digital_events` for the first time**: a 7-day window (112,692 events, 2026-06-11
+  to 2026-06-18), using the new `--skip-tables` flag to avoid re-touching already-loaded
+  tables. Report counts matched live `SELECT count(*)` exactly, same verification method as
+  Phases 3–4.
+- **Three real bugs found and fixed during verification** (full detail in
+  `src/evidence/README.md`): (1) the same Postgres 65,535-parameter limit hit again in
+  `load_devices` because it didn't reuse `src/ingestion/loader.py`'s batching — fixed the same
+  way; (2) `fraud_cases.case_id` is `VARCHAR(30)` but the code generated 36-char UUIDs for it
+  (correct for `evidence.evidence_id`, wrong for `case_id`) — caught as a real
+  `StringDataRightTruncation` error on the first persist attempt, not by review; (3)
+  SQLAlchemy's `Enum(native_enum=False)` stores the Python enum member *name*
+  (`SUPPORTS_FRAUD`) by default, not `.value` (`supports_fraud`) — inconsistent with
+  `docs/domain-model.md`'s documented direction strings, caught by inspecting the first real
+  evidence rows written to the database, not assumed correct because nothing crashed.
+- **Verified end-to-end against real data, twice, with genuinely different results each time**
+  (not two runs of the same trivial case): device derivation produced **19,065 distinct device
+  fingerprints from 112,692 events**. Two evidence graphs built and persisted:
+  1. A real `is_fraud=true` transaction (`TRX-MXCWNPT6UVBUMBBVOPWM`) — evidence came back
+     almost entirely `supports_legitimate`/`neutral` (matching country, unremarkable amount,
+     successful auth, no complaints, no velocity spike, no nearby digital session). Consistent
+     with the Phase 4 finding, not contradicting it.
+  2. A real `is_fraud=false` transaction (`TRX-SMPYV51IQT9JPNQ56BMR`) — known device, matching
+     country, successful auth, but an amount 4.3 standard deviations above this customer's
+     prior mean. **The engine correctly detected 2 contradictions** (the amount anomaly vs. the
+     known-device and matching-country evidence) instead of picking a side — a real instance
+     of `docs/demo-script.md` Scenario C's "ambiguous, mixed evidence" case, found in real data.
+  Both committed as `data/reports/example_evidence_graph.json` and
+  `data/reports/example_evidence_graph_ambiguous.json` — meets the Phase 5 exit criteria
+  (`docs/implementation-roadmap.md`: "the example graph shape in prompt.md § 10 is
+  reproducible from real data for at least one seeded case").
+- 13 new unit tests (`tests/unit/test_evidence_graph.py`) for the pure-logic pieces (device
+  fingerprint stability/uniqueness/None-on-missing-IP, the country/auth evidence rules, and —
+  the phase's explicitly required test — contradiction detection with two conflicting signals,
+  plus verifying weak/agreeing/neutral signals are correctly *not* flagged as contradictions).
+  The DB-coupled rules (device/amount/complaint/velocity evidence) are verified against the
+  live database instead of mocked, per `src/evidence/README.md`'s stated testing strategy.
+  38 unit tests total (10 Phase 1 + 7 Phase 2 + 3 Phase 3 + 5 Phase 4 + 13 Phase 5), all passing.
+- **Not done in this phase, by design:** no risk score, no Decision record, no action
+  execution — this module only assembles and persists evidence. Its direction/confidence
+  values are illustrative heuristics (`docs/decision-policy.md` § 5), not approved policy.
+
 ## In progress
 
 Nothing.
@@ -289,18 +343,25 @@ Everything under "Status by roadmap phase" marked `NOT_IMPLEMENTED` above.
 - Host ports in `docker-compose.yml` are remapped to 8080 (api) and 5433 (db) because 8000 and
   5432 were already in use by other software on the development machine. Adjust back to
   8000/5432 if that's not the case in your environment.
-- Only a bounded recent-date sample of the dataset has been ingested (Phase 3, now 90 days for
-  `transactions`/`complaints`/`call_center_interactions`; `digital_events`/`call_transcripts`
-  remain at the earlier 3-day sample, skipped in the Phase 4 re-run) — the full ~19M-row
-  dataset has not been loaded. The development machine has very little free RAM available (a
-  background training run was killed by out-of-memory conditions twice during Phase 4 before
-  succeeding on retry) — a `--full` ingestion run needs more headroom than was available here.
-  See `src/ingestion/README.md` § Sample vs. full mode.
+- Only a bounded recent-date sample of the dataset has been ingested (Phase 3: 90 days for
+  `transactions`/`complaints`/`call_center_interactions`; Phase 5: 7 days for `digital_events`;
+  `call_transcripts` remains at the earliest 3-day sample) — the full ~19M-row dataset has not
+  been loaded. The development machine has very little free RAM available (background runs
+  were killed by out-of-memory conditions multiple times across Phases 4–5 before succeeding
+  on retry) — a `--full` ingestion run needs more headroom than was available here. See
+  `src/ingestion/README.md` § Sample vs. full mode.
 - **The trained fraud model performs near chance** (test ROC-AUC 0.46–0.50) on the currently
   loaded sample — this is a genuine, verified finding (not a bug; see § Phase 4 detail), not a
-  limitation to silently work around. The behavioral/transactional features available don't
-  carry the signal the dataset's own `fraud_score` field demonstrably has; the most promising
-  next step is Phase 5's `Device` derivation from `digital_events` (not yet loaded).
+  limitation to silently work around. The Phase 5 Evidence Engine's device derivation (the
+  leading hypothesis for recovering the signal) is now implemented and was tested against real
+  fraud cases, but the two spot-checked cases didn't happen to show a strong device signal
+  either — the fraud model has not been re-trained with device-derived features yet; that
+  integration (feeding Evidence Engine / Device signals back into `src/ml/features.py`) is
+  an open next step, not yet attempted.
+- **`device_id` is a heuristic proxy, not a true device fingerprint** (`src/evidence/device.py`
+  — the dataset has no persistent device-fingerprint column). Known limitations: IP-based
+  collisions across customers on shared networks/NAT, and a customer's own IP changing
+  registering as a "new device." Documented in the module itself, not hidden.
 - No frontend framework has been chosen (`docs/architecture.md` § 15, `OPEN QUESTION`).
 - No business-approved risk thresholds, cost coefficients, or approval-matrix cells exist
   anywhere in this project — every number in `docs/decision-policy.md` and
