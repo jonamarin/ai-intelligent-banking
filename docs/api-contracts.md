@@ -3,44 +3,62 @@
 Owns: system/API/event boundaries. See `docs/architecture.md` § 6 for the tool-authorization
 flow these endpoints ultimately gate, and `docs/security-model.md` for the trust model.
 
-**Status: only `/api/v1/health` is implemented (Phase 1, `docs/project-status.md`); everything
-else below is `PROPOSED`.** This document defines the intended contract so implementation
-doesn't have to re-derive it from `prompt.md`.
+**Status: Phase 10 implements the core case endpoints (`src/api/cases.py`); `/messages`,
+`/evaluate`, and `/metrics` remain `PROPOSED`.** This document defines the intended contract so
+implementation doesn't have to re-derive it from `prompt.md`.
 
 ## 1. Endpoints
 
 | Method & path | Purpose | Status |
 |---|---|---|
-| `GET /api/v1/health` | Liveness/readiness | **IMPLEMENTED** (`src/api/main.py`) |
-| `POST /api/v1/cases` | Create a case from a customer interaction | PROPOSED |
-| `POST /api/v1/cases/{case_id}/messages` | Add a customer/agent message to a case | PROPOSED |
-| `GET /api/v1/cases/{case_id}` | Retrieve case state | PROPOSED |
-| `GET /api/v1/cases/{case_id}/evidence` | Retrieve the evidence graph | PROPOSED |
-| `GET /api/v1/cases/{case_id}/decision` | Retrieve the current decision + provenance | PROPOSED |
-| `POST /api/v1/cases/{case_id}/approve` | Human approval of a pending action | PROPOSED |
-| `POST /api/v1/cases/{case_id}/reject` | Human rejection of a pending action | PROPOSED |
-| `POST /api/v1/evaluate` | Trigger an evaluation run | PROPOSED |
-| `GET /api/v1/metrics` | Metrics endpoint (Prometheus-compatible) | PROPOSED |
+| `GET /api/v1/health` | Liveness/readiness | **IMPLEMENTED** (`src/api/main.py`, Phase 1) |
+| `POST /api/v1/cases` | Build the evidence graph for a transaction, run it through orchestration, persist the Decision | **IMPLEMENTED** (`src/api/cases.py`, Phase 10) |
+| `GET /api/v1/cases` | List recent cases (the analyst review queue) | **IMPLEMENTED** — analyst/supervisor role only |
+| `GET /api/v1/cases/{case_id}` | Retrieve case state | **IMPLEMENTED** — role-shaped: a customer session gets status + plain-language explanation only; an analyst/supervisor session also gets the evidence graph, decision provenance, and audit trail. **Deviates from this table's original proposed shape**: evidence and decision are returned inline here rather than via the two separate sub-resource endpoints originally proposed below, to render one analyst page in one request; see `src/api/README.md` for the reasoning |
+| `POST /api/v1/cases/{case_id}/messages` | Add a customer/agent message to a case | PROPOSED — no live conversational intake channel exists yet (`docs/project-status.md` § Phase 6 detail: `customer_message` for a live case is sourced from `call_transcripts`, not typed in real time) |
+| `GET /api/v1/cases/{case_id}/evidence` | Retrieve the evidence graph | Folded into `GET /cases/{case_id}`'s analyst view instead of a separate endpoint (see above) |
+| `GET /api/v1/cases/{case_id}/decision` | Retrieve the current decision + provenance | Folded into `GET /cases/{case_id}`'s analyst view instead of a separate endpoint (see above) |
+| `POST /api/v1/cases/{case_id}/approve` | Human approval of a pending action | **IMPLEMENTED as `POST /cases/{case_id}/review`** with `{"action": "approve"}` — one handler for both approve/reject rather than two near-duplicates, idempotency-key-protected (`src/policies/gateway.py`) |
+| `POST /api/v1/cases/{case_id}/reject` | Human rejection of a pending action | **IMPLEMENTED as `POST /cases/{case_id}/review`** with `{"action": "reject"}` — see above |
+| `POST /api/v1/cases/session` | Set the trusted-test-identity role cookie (`src/api/deps.py`) | **IMPLEMENTED**, Phase 10 addition not in the original proposed table — no real auth system exists (`docs/security-model.md` § 3), so this stands in for it, honestly labeled everywhere it's used |
+| `POST /api/v1/evaluate` | Trigger an evaluation run | PROPOSED (Phase 11) |
+| `GET /api/v1/metrics` | Metrics endpoint (Prometheus-compatible) | PROPOSED (Phase 13) |
 
 The implemented `/health` endpoint also already demonstrates two of the cross-cutting
 requirements below ahead of the rest of the API: correlation-ID propagation (§ 2) and
-structured, stack-trace-free error responses (§ 2) — see `src/api/errors.py`.
+structured, stack-trace-free error responses (§ 2) — see `src/api/errors.py`. The Phase 10
+endpoints demonstrate two more: request validation (every body is a `extra="forbid"` Pydantic
+model, `src/api/schemas.py`) and idempotency (`POST /review`, via `src/policies/gateway.py`'s
+`action_executions` mechanism, Phase 9).
 
 (`prompt.md` § 43.) All request/response bodies are Pydantic-validated once implemented; no
 endpoint accepts unvalidated input.
 
 ## 2. Cross-cutting requirements
 
-- **Authentication:** every endpoint except `/health` requires an authenticated session
-  context (`docs/security-model.md` § 3). Mechanism `TBD`.
-- **Authorization:** role-scoped — a customer session can only read/act on their own cases; an
-  analyst session can read/act within their assignment scope; `approve`/`reject` require an
-  analyst or supervisor role, never a customer session.
+- **Authentication:** every endpoint except `/health` and `/cases` (create/list, see below)
+  requires a session context — implemented as `src/api/deps.py`'s trusted-test-identity cookie
+  (`docs/security-model.md` § 3: a real identity system is explicitly out of scope for this
+  prototype). `POST /cases` (create) doesn't need one — a customer reporting a transaction is
+  the intended entry point and carries no risk itself (`docs/decision-policy.md` § 6, Low
+  action-risk); the role check gates what can be *done* with the resulting case, not whether a
+  case can be opened.
+- **Authorization:** role-scoped — implemented as `GET /cases/{case_id}` returning a
+  role-shaped response (`CustomerCaseView` vs `AnalystCaseView`, `src/api/schemas.py`) and
+  `GET /cases` / `POST /cases/{case_id}/review` requiring `require_reviewer_role`
+  (analyst/supervisor only) — a customer session gets a real 403, not a hidden UI control
+  (`.claude/rules/frontend.md`). **Not yet implemented**: per-customer case-ownership scoping
+  ("a customer session can only read/act on their own cases") — there is no customer identity
+  to scope by yet, since the trusted-test-identity abstraction has no per-customer login, only
+  a role. Honestly reported, not silently claimed.
 - **Correlation IDs:** every request carries/generates a correlation ID propagated through
-  traces and audit events (`docs/observability.md` § 1).
-- **Idempotency:** `POST /cases/{case_id}/approve` and `/reject` (and any future action
-  endpoint) require an idempotency key so a retried request cannot double-execute
-  (`docs/architecture.md` § 11).
+  traces (`src/api/main.py`'s middleware, Phase 1) — **not yet propagated into audit events**
+  (`src/policies/gateway.py`/`src/evidence/persist.py` always write `correlation_id=None`); a
+  known, honestly-reported gap, not claimed as done.
+- **Idempotency:** `POST /cases/{case_id}/review` (approve and reject both) requires an
+  idempotency key so a retried request cannot double-execute (`docs/architecture.md` § 11) —
+  **IMPLEMENTED**, Phase 9's `action_executions` mechanism, reused here
+  (`src/policies/gateway.py`'s `approve_pending_action`).
 - **Versioning:** `/api/v1/` prefix reserves room for a future `/v2/`; breaking changes get a
   new version, not a silent contract change.
 - **Request validation:** reject malformed/out-of-range input with a structured 4xx error

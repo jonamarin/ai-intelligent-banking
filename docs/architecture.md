@@ -204,4 +204,13 @@ LLM or orchestration prompt context.
 - **Mock LLM mode as a hard requirement:** the project must be runnable, testable, and
   demoable without a paid API key or network dependency (`prompt.md` § 52).
 
-Frontend framework: `OPEN QUESTION`, deferred to Phase 10 of `docs/implementation-roadmap.md`.
+- **Frontend: server-rendered Jinja2 templates + vanilla JS, no separate framework/build
+  step** (Phase 10, resolving this section's earlier `OPEN QUESTION`). A React/Vue/etc. SPA
+  would need a Node/npm toolchain running alongside Docker, Postgres, and the ML pipeline on a
+  development machine already documented throughout this project as memory-constrained
+  (`docs/project-status.md` § Known limitations); a prototype at this scope doesn't need a
+  second language/runtime to get three views (customer status, analyst case detail, review
+  queue) rendered. `src/api/ui.py` reuses the exact same request-handling functions
+  `src/api/cases.py`'s JSON endpoints call — `Depends(...)` defaults are simply overridden with
+  real values when called directly in Python — so there's one implementation per view, not a
+  duplicated API-plus-frontend-client pair to keep in sync. See `src/api/README.md`.

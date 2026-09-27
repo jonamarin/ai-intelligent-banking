@@ -123,7 +123,8 @@ def persist_decision(
                 # rule-based, not templated.
                 prompt_version=None,
                 confidence=result.intent.confidence,
-                explanation=result.explanation.analyst_explanation,
+                analyst_explanation=result.explanation.analyst_explanation,
+                customer_explanation_es=result.explanation.customer_explanation_es,
                 llm_degraded=result.llm_degraded,
                 created_at=now,
             )
@@ -191,18 +192,63 @@ def approve_pending_action(
     reviewer_id: str,
     action: ReviewAction,
     rationale: str | None = None,
-) -> str:
+    idempotency_key: str | None = None,
+) -> tuple[str, bool]:
     """A human's action on a case gated by `persist_decision` — never merged
-    into the `Decision` record (`docs/human-oversight.md` § 4). Returns the
-    new `review_id`."""
+    into the `Decision` record (`docs/human-oversight.md` § 4). Returns
+    `(review_id, was_duplicate)` — a human's approval click is itself a
+    state-changing request and can be retried/double-submitted just like
+    any other (`docs/api-contracts.md` § 2: "POST /cases/{case_id}/approve
+    and /reject ... require an idempotency key"), reusing the same
+    `action_executions` reservation mechanism `persist_decision` uses.
+    Default key: `f"{decision_id}-review"` — one human decision per
+    Decision, which is the actual business invariant (a second reviewer
+    reversing the first is a *new*, explicit action with its own call, not
+    a retry of this one)."""
+    key = idempotency_key or f"{decision_id}-review"
     review_id = str(uuid.uuid4())
     now = dt.datetime.now(dt.UTC)
 
     human_reviews_table = cast(Table, HumanReview.__table__)
     audit_events_table = cast(Table, AuditEvent.__table__)
     fraud_cases_table = cast(Table, FraudCase.__table__)
+    action_executions_table = cast(Table, ActionExecution.__table__)
 
     with engine.begin() as conn:
+        won_race = conn.execute(
+            pg_insert(action_executions_table)
+            .values(
+                idempotency_key=key,
+                case_id=case_id,
+                tool_name="human_review",
+                decision_id=decision_id,
+                result={"action": action},
+                created_at=now,
+            )
+            .on_conflict_do_nothing(index_elements=["idempotency_key"])
+            .returning(action_executions_table.c.idempotency_key)
+        ).fetchone()
+
+        if won_race is None:
+            existing = conn.execute(
+                select(human_reviews_table.c.review_id).where(
+                    human_reviews_table.c.decision_id == decision_id
+                )
+            ).fetchone()
+            original_review_id = existing.review_id if existing else review_id
+            conn.execute(
+                audit_events_table.insert().values(
+                    audit_event_id=str(uuid.uuid4()),
+                    event_type="action.duplicate_detected",
+                    case_id=case_id,
+                    decision_id=decision_id,
+                    correlation_id=None,
+                    payload=redact_value({"idempotency_key": key}),
+                    created_at=now,
+                )
+            )
+            return original_review_id, True
+
         conn.execute(
             human_reviews_table.insert().values(
                 review_id=review_id,
@@ -236,7 +282,7 @@ def approve_pending_action(
             )
         )
 
-    return review_id
+    return review_id, False
 
 
 def _no_tool_audit_events(result: CaseResult) -> list[str]:

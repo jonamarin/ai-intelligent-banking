@@ -5,36 +5,36 @@ dispute intake and fraud investigation** for a synthetic LATAM retail bank. Buil
 Factored Datathon 2026 (`project_presentation.txt`), following the technical vision in
 `prompt.md`.
 
-> **Status: Phase 9 (Reliability) complete.** This repository contains the project's Claude
-> Code operating system — architecture, domain model, security model, guardrails, evaluation
-> plan, and a phased implementation roadmap — a working application foundation (FastAPI health
-> check, structured/redacted logging, config, Docker, CI), a complete, migrated PostgreSQL
-> schema for every entity in `docs/domain-model.md`, a verified ingestion pipeline that has
-> loaded real (synthetic) data into it, a trained, evaluated fraud model with an
+> **Status: Phase 10 (UI) complete.** This repository contains the project's Claude Code
+> operating system — architecture, domain model, security model, guardrails, evaluation plan,
+> and a phased implementation roadmap — a working application foundation, a complete, migrated
+> PostgreSQL schema, a verified ingestion pipeline, a trained, evaluated fraud model with an
 > honestly-reported result (**it performs near chance on the currently loaded sample** — a real
 > finding, see `src/ml/README.md`, not a bug), a working Evidence Engine that has built and
-> persisted real evidence graphs — **including genuinely detected contradictions** — for real
-> transactions (see `src/evidence/README.md`), a working case orchestration state machine, a
-> real deterministic **Policy Engine** where **Irreversible/Critical actions require human
-> approval unconditionally, provably** (a test that tries to bypass this exists and fails — see
-> `src/policies/README.md`), a centralized **PII/secret redaction layer** plus an automated
-> **red-team test suite** (**0/17 unsafe actions, measured** — see `src/security/README.md`),
-> and now real handling for the failure modes in `docs/architecture.md` § 10: bounded LLM
-> retries with a deterministic fallback (an unavailable LLM still degrades to `escalate`, never
-> a guess — even for a $100,000 transfer, human approval still fires), a bounded database-
-> connect timeout (verified against a genuinely unreachable address, not a mock), and a real,
-> database-enforced **idempotency mechanism** — the last major documented gap, closed and
-> verified live (two duplicate submissions -> one `Decision` row, one execution event) — see
-> `src/orchestration/README.md` § Reliability. **A bounded recent-date sample is loaded, not the
-> full ~19M-row dataset** (the dev machine has too little free RAM for that right now — see
-> `src/ingestion/README.md`). **Genuine remaining gaps, honestly reported:** a real
-> authentication/session layer is explicitly out of scope for this prototype
-> (`docs/security-model.md` § 3); risk-band fraud-probability thresholds aren't wired in because
-> Phase 4's model score was never plumbed into orchestration. The Evidence Engine's device
-> fingerprint is a documented heuristic proxy, and its direction/confidence values are
-> illustrative, never approved policy. See `docs/project-status.md` for the authoritative,
-> up-to-date state. Every claim in this README is labeled `Implemented`, `Planned`, `Partial`,
-> or `Mocked` — treat anything unlabeled as aspirational.
+> persisted real evidence graphs — **including genuinely detected contradictions**, a case
+> orchestration state machine, a real deterministic **Policy Engine** where
+> **Irreversible/Critical actions require human approval unconditionally, provably** (a test
+> that tries to bypass this exists and fails), a centralized **PII/secret redaction layer** plus
+> an automated **red-team test suite** (**0/17 unsafe actions, measured**), real handling for
+> LLM/database/RAG failure and a real **idempotency mechanism**, and now a real **JSON API**
+> (`docs/api-contracts.md`) plus a server-rendered **customer/analyst UI** on top of it — the
+> first live, browser-reachable consumer of everything the earlier phases built. Verified live,
+> end-to-end, in a real browser: create a case → the evidence graph renders with real data,
+> including genuine contradictions, four visually distinct states → both customer and analyst
+> explanations shown → approve a pending case → status updates. A customer session gets a real
+> 403 on analyst-only actions, not just a hidden button. See `src/api/README.md`.
+> **A bounded recent-date sample is loaded, not the full ~19M-row dataset** (the dev machine has
+> too little free RAM for that right now — see `src/ingestion/README.md`). **Genuine remaining
+> gaps, honestly reported:** a real authentication/session layer is explicitly out of scope for
+> this prototype (`docs/security-model.md` § 3) — the UI's role switcher is a trusted-test
+> stand-in, not real login; risk-band fraud-probability thresholds aren't wired in because
+> Phase 4's model score was never plumbed into orchestration; one of the four core demo
+> scenarios (asking the customer a clarifying question) isn't reachable live yet — a live case
+> can never trigger it, a pre-existing gap this phase's own testing surfaced. The Evidence
+> Engine's device fingerprint is a documented heuristic proxy, and its direction/confidence
+> values are illustrative, never approved policy. See `docs/project-status.md` for the
+> authoritative, up-to-date state. Every claim in this README is labeled `Implemented`,
+> `Planned`, `Partial`, or `Mocked` — treat anything unlabeled as aspirational.
 
 ## 1. Problem
 
@@ -93,12 +93,12 @@ CLAUDE.md                    Persistent Claude Code operating contract (start he
 docs/                         Architecture, domain model, security, evaluation, roadmap, status
 .claude/                      Rules, skills, agents, hooks, settings for Claude Code sessions
 evaluation/golden_cases/      Synthetic scenario fixtures (schema + 10 cases)
-src/                           FastAPI app, config/logging, domain models, ingestion pipeline,
-                                fraud ML, evidence engine, AI agent + orchestration, policy
-                                engine, security/redaction (implemented); other subpackages
-                                are future-phase skeletons
+src/                           FastAPI app + JSON API + server-rendered UI, config/logging,
+                                domain models, ingestion pipeline, fraud ML, evidence engine,
+                                AI agent + orchestration, policy engine, security/redaction
+                                (implemented); other subpackages are future-phase skeletons
 alembic/                       Migrations (implemented) — 17 tables + 1 link table
-tests/unit/                   64 passing unit tests
+tests/unit/                   82 passing tests (includes 18 Phase 10 API tests)
 tests/security/                24 passing tests (redaction + red-team/adversarial suite)
 tests/reliability/             23 passing tests (retry/fallback, idempotency, DB-timeout)
 data/raw/                      Raw LATAM Bank dataset (git-ignored, ~5.0 GB — not in git)
@@ -120,7 +120,7 @@ Verified working (`docs/project-status.md`):
 git clone <repo> && cd ai-intelligent-banking
 cp .env.example .env                  # fill in real values only if you need them; mock LLM mode needs none
 uv sync                               # installs dependencies into .venv
-uv run pytest                         # 111/111 passing (offline — model/ingestion/ML/evidence/orchestration/policy/security/reliability tests use in-memory SQLite / fixtures)
+uv run pytest                         # 129/129 passing (offline — model/ingestion/ML/evidence/orchestration/policy/security/reliability/API tests use in-memory SQLite / fixtures)
 uv run ruff check . && uv run mypy src   # lint + typecheck, both clean
 docker compose up -d                  # api on :8080, db (pgvector/pg16) on :5433
 curl http://localhost:8080/api/v1/health
@@ -150,14 +150,19 @@ uv run pytest tests/security/ -q
 # reliability test suite — offline, no DB, no API key (src/orchestration/README.md § Reliability)
 uv run pytest tests/reliability/ -q
 
+# run the API + UI (src/api/README.md) — needs DB + migrations applied above:
+DATABASE_URL="postgresql+psycopg://banking:banking@localhost:5433/banking_ai" uv run uvicorn src.api.main:app --reload --port 8080
+# then open http://localhost:8080/ — role switcher top-right, "Create case" on the home page
+uv run pytest tests/unit/test_api_cases.py -q   # offline, no DB, no API key
+
 docker compose down
 ```
 
 `make install|test|lint|typecheck|docker-up|docker-down|seed` wrap the same commands (`seed`
 runs the ingestion command above), but **`make` itself was not installed on the machine this
 was verified on** — install it if you want the shorter form, or just use the `uv`/`docker`
-commands directly. Running the API against the loaded data, full system evaluation, and the
-demo are all `Planned` — they need Phase 10+ (UI) first.
+commands directly. Full system evaluation and the demo script are `Planned` — they need
+Phase 11+ (Evaluation) first.
 
 ## 7. Demo scenarios — `Planned`
 

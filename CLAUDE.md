@@ -105,7 +105,7 @@ evaluation/
 
 src/                           ← application code (Phase 1+, docs/project-status.md)
   config/                      ← settings + structured logging (implemented)
-  api/                         ← FastAPI app, health check, error handling (implemented)
+  api/                         ← FastAPI app, health check, error handling, case JSON API, server-rendered UI (implemented, Phase 1, 10)
   models/                      ← SQLAlchemy models + Pydantic schemas (implemented, Phase 2-3)
   ingestion/                    ← CSV -> Postgres loader + data-quality report (implemented, Phase 3)
   ml/                           ← fraud model: features, baseline, XGBoost, evaluation (implemented, Phase 4)
@@ -121,7 +121,7 @@ src/                           ← application code (Phase 1+, docs/project-stat
 
 alembic/                       ← migrations (implemented, Phase 2-3, 9) — env.py reads
                                   src.config.settings + src.models.Base.metadata
-tests/unit/                    ← 64 passing tests (10 Phase 1 + 7 Phase 2 + 3 Phase 3 + 5 Phase 4 + 13 Phase 5 + 10 Phase 6 + 20 Phase 7 − 4 superseded, moved to tests/security/)
+tests/unit/                    ← 82 passing tests (10 Phase 1 + 7 Phase 2 + 3 Phase 3 + 5 Phase 4 + 13 Phase 5 + 10 Phase 6 + 20 Phase 7 − 4 superseded, moved to tests/security/, + 18 Phase 10 API tests)
 tests/security/                ← 24 passing tests (Phase 8: redaction + red-team/adversarial suite)
 tests/reliability/             ← 23 passing tests (Phase 9: retry/fallback, idempotency, DB-timeout)
 data/models/                   ← trained model artifacts (git-ignored — binary)
@@ -132,11 +132,11 @@ pyproject.toml, uv.lock, Dockerfile, docker-compose.yml, Makefile,
 
 Repository initialization, Phase 1 — Foundation, Phase 2 — Domain, Phase 3 — Ingestion
 (sample mode), Phase 4 — Fraud ML, Phase 5 — Evidence Engine, Phase 6 — AI Agent /
-Orchestration, Phase 7 — Policy Engine, Phase 8 — Security Hardening, and Phase 9 — Reliability
-are all done (`docs/project-status.md`). `infrastructure/terraform/` and everything else in
-`docs/implementation-roadmap.md` Phases 10+ do not exist yet — do not create empty placeholder
-directories for a phase before it actually starts; the existing `src/` subpackages that are
-still just markers document this explicitly in
+Orchestration, Phase 7 — Policy Engine, Phase 8 — Security Hardening, Phase 9 — Reliability, and
+Phase 10 — UI are all done (`docs/project-status.md`). `infrastructure/terraform/` and
+everything else in `docs/implementation-roadmap.md` Phases 11+ do not exist yet — do not create
+empty placeholder directories for a phase before it actually starts; the existing `src/`
+subpackages that are still just markers document this explicitly in
 their own docstrings. A `--full` ingestion run (the entire ~19M-row dataset, not just the
 verified recent-date sample) has also not been done — see `src/ingestion/README.md` § Sample vs.
 full mode before attempting it. **The trained fraud model performs near chance on the currently
@@ -170,7 +170,18 @@ doesn't pass end-to-end (the idempotency mechanism is proven; the mock LLM's int
 doesn't map that fixture's message to a `freeze_card` call — a Phase 6 gap). `call_transcripts`
 currently has **0 rows** in the live database (verified during Phase 6) despite earlier
 documentation claiming a 3-day sample — see `docs/project-status.md` § Known limitations before
-relying on it.
+relying on it. **Phase 10 built the first real API (`src/api/cases.py`, previously only
+`/health` existed) and a server-rendered customer/analyst UI on top of it
+(`src/api/ui.py` + `templates/`/`static/` — Jinja2 + vanilla JS, no separate frontend
+framework, resolving `docs/architecture.md` § 15's `OPEN QUESTION` — see `src/api/README.md`).**
+Role-shaped responses are enforced server-side (a customer session gets a real 403 on the
+review queue and review endpoint, verified live). `docs/demo-script.md` Scenarios A, B, and D
+are drivable live through a real browser, verified end-to-end; **Scenario C (ask a clarifying
+question) is not** — `src/orchestration/live_case.py` always sets `candidate_questions=[]`, so
+a live case can never produce `ask_question`, a pre-existing Phase 6 gap this phase's own UI
+testing surfaced. `CaseExplanation.customer_explanation_es` was never persisted before this
+phase (only `analyst_explanation` was) — fixed via a migration that also backfills existing
+rows rather than dropping them.
 
 ## 5. Confirmed technology stack (planned, not yet implemented)
 
@@ -183,9 +194,9 @@ Testing: pytest, pytest-asyncio. Quality: Ruff, mypy, pre-commit. Messaging: Kaf
 (Redpanda for local dev), introduced only if a phase actually needs asynchronous event
 processing — do not add it speculatively.
 
-Frontend framework is `OPEN QUESTION` — decide at the start of Phase 10 (`docs/
-implementation-roadmap.md`). Rationale for every stack choice: `docs/architecture.md` §
-Technology Rationale.
+Frontend: server-rendered Jinja2 templates + vanilla JS (`src/api/ui.py`), decided in Phase 10
+— no separate framework/build step (`docs/architecture.md` § 15). Rationale for every stack
+choice: `docs/architecture.md` § Technology Rationale.
 
 Every session must run in **mock LLM mode** without any paid API key — this is mandatory, not
 optional, and must remain true for the life of the project (`docs/model-evaluation.md`).
@@ -295,6 +306,11 @@ uv run pytest tests/security/test_red_team.py::test_adversarial_suite_unsafe_act
 # Reliability (docs/project-status.md § Phase 9 detail; src/orchestration/README.md § Reliability)
 # — fully offline, no DATABASE_URL, no API key:
 uv run pytest tests/reliability/ -q
+
+# UI/API (docs/project-status.md § Phase 10 detail; src/api/README.md) — needs the DB (same
+# DATABASE_URL override, run migrations first), then open http://localhost:8080/ in a browser:
+DATABASE_URL="postgresql+psycopg://banking:banking@localhost:5433/banking_ai" uv run uvicorn src.api.main:app --reload --port 8080
+uv run pytest tests/unit/test_api_cases.py -q   # offline, no DATABASE_URL, no API key
 ```
 
 `Makefile` mirrors these as `make install|lint|typecheck|test|docker-up|docker-down`, but

@@ -1,0 +1,177 @@
+:root {
+  --bg: #f7f7f5;
+  --panel: #ffffff;
+  --border: #dedede;
+  --text: #1a1a1a;
+  --muted: #6b6b6b;
+  --fraud: #b3261e;
+  --fraud-bg: #fdecea;
+  --legit: #1e7a34;
+  --legit-bg: #e9f6ec;
+  --neutral: #555;
+  --neutral-bg: #eeeeee;
+  --contradiction: #8a4b00;
+  --contradiction-bg: #fff2df;
+  --accent: #2451a3;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  font-family: -apple-system, "Segoe UI", Roboto, sans-serif;
+  background: var(--bg);
+  color: var(--text);
+}
+
+header.topbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px 20px;
+  background: var(--panel);
+  border-bottom: 1px solid var(--border);
+}
+
+header.topbar a { color: var(--accent); text-decoration: none; font-weight: 600; }
+
+main { max-width: 960px; margin: 0 auto; padding: 20px; }
+
+.card {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 16px 20px;
+  margin-bottom: 16px;
+}
+
+.role-banner {
+  font-size: 0.85em;
+  color: var(--muted);
+  background: var(--neutral-bg);
+  border-radius: 6px;
+  padding: 6px 10px;
+  margin-bottom: 16px;
+}
+
+.role-switch a {
+  margin-right: 8px;
+  padding: 4px 10px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  text-decoration: none;
+  color: var(--text);
+  font-size: 0.85em;
+}
+
+.role-switch a.active { background: var(--accent); color: white; border-color: var(--accent); }
+
+table { width: 100%; border-collapse: collapse; }
+th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--border); font-size: 0.92em; }
+th { color: var(--muted); font-weight: 600; }
+
+.badge {
+  display: inline-block;
+  padding: 2px 10px;
+  border-radius: 999px;
+  font-size: 0.8em;
+  font-weight: 600;
+}
+.badge-fraud { background: var(--fraud-bg); color: var(--fraud); }
+.badge-legit { background: var(--legit-bg); color: var(--legit); }
+.badge-neutral { background: var(--neutral-bg); color: var(--neutral); }
+.badge-unknown { background: var(--neutral-bg); color: var(--muted); font-style: italic; }
+
+.evidence-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--border);
+}
+.evidence-item:last-child { border-bottom: none; }
+.evidence-meta { color: var(--muted); font-size: 0.85em; }
+
+.contradiction-box {
+  background: var(--contradiction-bg);
+  border: 1px solid var(--contradiction);
+  border-radius: 6px;
+  padding: 10px 14px;
+  margin: 8px 0;
+  font-size: 0.88em;
+  color: var(--contradiction);
+}
+.contradiction-box::before { content: "\26A0 CONTRADICTION: "; font-weight: 700; }
+
+.explanation-box { border-radius: 6px; padding: 12px 14px; margin: 8px 0; font-size: 0.92em; }
+.explanation-customer { background: #eef4ff; border: 1px solid #bcd2f2; }
+.explanation-analyst { background: #f5f5f0; border: 1px solid var(--border); font-family: ui-monospace, monospace; white-space: pre-wrap; }
+
+.audit-trail { list-style: none; margin: 0; padding: 0; }
+.audit-trail li {
+  padding: 6px 0 6px 18px;
+  border-left: 2px solid var(--border);
+  font-size: 0.85em;
+  color: var(--muted);
+  position: relative;
+}
+.audit-trail li::before {
+  content: "";
+  width: 8px; height: 8px;
+  background: var(--accent);
+  border-radius: 50%;
+  position: absolute; left: -5px; top: 10px;
+}
+
+.pill { padding: 2px 8px; border-radius: 999px; font-size: 0.78em; font-weight: 600; }
+.pill-pending { background: #fff3cd; color: #7a5c00; }
+.pill-resolved { background: var(--legit-bg); color: var(--legit); }
+.pill-not_required { background: var(--neutral-bg); color: var(--neutral); }
+
+button, .btn {
+  border: none;
+  border-radius: 6px;
+  padding: 8px 16px;
+  font-size: 0.92em;
+  font-weight: 600;
+  cursor: pointer;
+}
+.btn-approve { background: var(--legit); color: white; }
+.btn-reject { background: var(--fraud); color: white; }
+.btn-primary { background: var(--accent); color: white; }
+
+.warning-banner {
+  background: #fff3cd;
+  border: 1px solid #f0c674;
+  border-radius: 6px;
+  padding: 10px 14px;
+  font-size: 0.88em;
+  margin-bottom: 16px;
+}
+
+.degraded-banner {
+  background: #ffe5e5;
+  border: 1px solid #e0a0a0;
+  border-radius: 6px;
+  padding: 10px 14px;
+  font-size: 0.88em;
+  margin-bottom: 16px;
+}
+
+input[type=text] {
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  font-size: 0.92em;
+  width: 260px;
+}
+
+.empty-state { color: var(--muted); font-style: italic; padding: 20px 0; }
+
+.trust-notice {
+  font-size: 0.78em;
+  color: var(--muted);
+  margin-top: 24px;
+  padding-top: 12px;
+  border-top: 1px dashed var(--border);
+}

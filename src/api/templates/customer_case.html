@@ -1,0 +1,25 @@
+{% extends "base.html" %}
+{% block title %}Case {{ case.case_id }} — Customer view{% endblock %}
+{% block content %}
+<div class="role-banner">Current session role: <strong>{{ role }}</strong></div>
+
+<div class="card">
+  <h2>Your case: {{ case.case_id }}</h2>
+  <p>Status:
+    <span class="pill {{ 'pill-resolved' if case.status == 'resolved' else ('pill-pending' if 'pending' in case.status or case.status == 'under_review' else 'pill-not_required') }}">
+      {{ case.status }}
+    </span>
+  </p>
+  {% if case.customer_explanation_es %}
+  <div class="explanation-box explanation-customer">{{ case.customer_explanation_es }}</div>
+  {% else %}
+  <p class="empty-state">No explanation available yet for this case.</p>
+  {% endif %}
+</div>
+
+<p style="font-size: 0.85em; color: var(--muted);">
+  This view deliberately shows only your case status and a plain-language explanation — no
+  internal risk scores, model details, or evidence identifiers
+  (.claude/rules/frontend.md: "the customer view never exposes internal risk details").
+</p>
+{% endblock %}

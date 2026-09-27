@@ -1,0 +1,113 @@
+{% extends "base.html" %}
+{% block title %}Case {{ case.case_id }} — Analyst view{% endblock %}
+{% block content %}
+<div class="role-banner">Current session role: <strong>{{ role }}</strong></div>
+
+{% if case.latest_decision and case.latest_decision.llm_degraded %}
+<div class="degraded-banner">
+  &#9888; This decision was made in <strong>degraded mode</strong> (llm_degraded=true) — the LLM
+  provider was unavailable when this case ran; the system fell back to a conservative,
+  evidence-only path (docs/demo-script.md Scenario E, src/orchestration/fallback.py).
+</div>
+{% endif %}
+
+<div class="card">
+  <h2>Case {{ case.case_id }}</h2>
+  <table>
+    <tr><th>Customer</th><td>{{ case.customer_id }}</td></tr>
+    <tr><th>Transaction</th><td>{{ case.transaction_id or "—" }}</td></tr>
+    <tr><th>Status</th><td>{{ case.status }}</td></tr>
+    <tr><th>Decision</th><td>{{ case.decision or "—" }}</td></tr>
+    <tr><th>Decision reason</th><td>{{ case.decision_reason or "—" }}</td></tr>
+    <tr><th>Escalation required</th><td>{{ "yes" if case.escalation_required else "no" }}</td></tr>
+    <tr>
+      <th>Human review</th>
+      <td>
+        {% if case.human_review_status == "pending" %}
+        <span class="pill pill-pending">pending</span>
+        {% else %}
+        {{ case.human_review_status or "not_required" }}
+        {% endif %}
+      </td>
+    </tr>
+  </table>
+</div>
+
+<div class="card">
+  <h2>Evidence graph</h2>
+  <p style="color: var(--muted); font-size: 0.85em;">
+    Four genuinely distinct states — never shades of the same color implying a spectrum
+    (.claude/rules/frontend.md).
+  </p>
+  {% if case.evidence %}
+    {% for item in case.evidence %}
+    <div class="evidence-item">
+      <div>
+        <span class="badge {{ 'badge-fraud' if item.direction == 'supports_fraud' else ('badge-legit' if item.direction == 'supports_legitimate' else 'badge-neutral') }}">
+          {{ item.direction }}
+        </span>
+        <strong>{{ item.type }}</strong>: {{ item.value }}
+      </div>
+      <div class="evidence-meta">
+        confidence: {{ "%.2f"|format(item.confidence) if item.confidence is not none else "unknown" }}
+        &middot; {{ item.provenance }}
+      </div>
+    </div>
+    {% endfor %}
+  {% else %}
+    <p class="empty-state">No evidence recorded for this case.</p>
+  {% endif %}
+
+  {% if case.contradictions %}
+    {% for pair in case.contradictions %}
+    <div class="contradiction-box">{{ pair[0] }} &harr; {{ pair[1] }}</div>
+    {% endfor %}
+  {% endif %}
+</div>
+
+<div class="card">
+  <h2>Explanations</h2>
+  {% if case.latest_decision %}
+  <p style="font-size: 0.85em; color: var(--muted);">Customer-facing (Spanish):</p>
+  <div class="explanation-box explanation-customer">{{ case.latest_decision.customer_explanation_es or "—" }}</div>
+  <p style="font-size: 0.85em; color: var(--muted);">Analyst-facing (technical, cites evidence + versions):</p>
+  <div class="explanation-box explanation-analyst">{{ case.latest_decision.analyst_explanation or "—" }}</div>
+  <p style="font-size: 0.8em; color: var(--muted);">
+    model={{ case.latest_decision.model_version or "n/a" }} &middot;
+    policy={{ case.latest_decision.policy_version }} &middot;
+    confidence={{ "%.2f"|format(case.latest_decision.confidence) if case.latest_decision.confidence is not none else "n/a" }}
+  </p>
+  {% else %}
+  <p class="empty-state">No Decision recorded for this case.</p>
+  {% endif %}
+</div>
+
+{% if case.human_review_status == "pending" and role in ('analyst', 'supervisor') %}
+<div class="card">
+  <h2>Review this decision</h2>
+  <p style="color: var(--muted); font-size: 0.85em;">
+    Approving or rejecting is only reachable from this analyst/supervisor session
+    (.claude/rules/frontend.md); the API independently enforces this too (403 for a customer
+    session), not just this hidden-for-customers control.
+  </p>
+  <input type="text" id="reviewer-id-input" placeholder="reviewer id" value="ANALYST-DEMO">
+  <input type="text" id="rationale-input" placeholder="rationale (optional)">
+  <br><br>
+  <button class="btn-approve" onclick="reviewCase('{{ case.case_id }}', 'approve')">Approve</button>
+  <button class="btn-reject" onclick="reviewCase('{{ case.case_id }}', 'reject')">Reject</button>
+</div>
+{% endif %}
+
+<div class="card">
+  <h2>Audit trail</h2>
+  {% if case.audit_trail %}
+  <ul class="audit-trail">
+    {% for event in case.audit_trail %}
+    <li><strong>{{ event.event_type }}</strong> — {{ event.created_at }}</li>
+    {% endfor %}
+  </ul>
+  {% else %}
+  <p class="empty-state">No audit events recorded for this case.</p>
+  {% endif %}
+</div>
+{% endblock %}

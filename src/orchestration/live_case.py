@@ -23,12 +23,13 @@ human_review_status='pending') via src/policies/gateway.py.
 """
 
 import argparse
+import dataclasses
 
 from sqlalchemy import text
 from sqlalchemy.engine import Engine
 
 from src.evidence.graph import EvidenceGraph, build_evidence_graph
-from src.orchestration.case import CaseInput
+from src.orchestration.case import CaseInput, CaseResult
 
 _PLACEHOLDER_MESSAGE = (
     "[No customer_interactions or call_transcripts message on file for this customer in the "
@@ -99,6 +100,47 @@ def case_input_from_graph(engine: Engine, graph: EvidenceGraph) -> CaseInput:
     )
 
 
+@dataclasses.dataclass
+class LiveCaseOutcome:
+    case: CaseInput
+    result: CaseResult
+    decision_id: str | None
+    was_duplicate: bool
+
+
+def create_and_run_case(
+    engine: Engine, transaction_id: str, *, persist: bool = True
+) -> LiveCaseOutcome:
+    """The one code path both the CLI (`main()` below) and the API
+    (`src/api/cases.py`, Phase 10) use to turn a transaction into a fully
+    reasoned, authorized, (optionally) persisted case — build the evidence
+    graph, convert it to a `CaseInput`, run it through orchestration, and
+    persist the Decision. A CLI printer and a JSON API response each do
+    their own presentation on top of these same underlying objects."""
+    from src.agents.llm_client import MockLLMClient
+    from src.evidence.persist import persist_evidence_graph
+    from src.orchestration.flow import run_case
+    from src.policies.gateway import persist_decision
+    from src.retrieval.policy_rag import PolicyRAG
+
+    graph = build_evidence_graph(engine, transaction_id)
+    if persist:
+        persist_evidence_graph(engine, graph)
+    case = case_input_from_graph(engine, graph)
+    result = run_case(case, MockLLMClient(), PolicyRAG())
+
+    decision_id: str | None = None
+    was_duplicate = False
+    if persist:
+        decision_id, was_duplicate = persist_decision(
+            engine, case, result, MockLLMClient.model_name
+        )
+
+    return LiveCaseOutcome(
+        case=case, result=result, decision_id=decision_id, was_duplicate=was_duplicate
+    )
+
+
 def _pick_fraud_transaction_id(engine: Engine) -> str:
     with engine.connect() as conn:
         row = conn.execute(
@@ -113,12 +155,8 @@ def _pick_fraud_transaction_id(engine: Engine) -> str:
 
 
 def main() -> None:
-    from src.agents.llm_client import MockLLMClient
-    from src.evidence.persist import persist_evidence_graph
     from src.models.base import get_engine
-    from src.orchestration.flow import run_case
     from src.policies.gateway import persist_decision
-    from src.retrieval.policy_rag import PolicyRAG
 
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--transaction-id", type=str, default=None)
@@ -145,11 +183,9 @@ def main() -> None:
 
     engine = get_engine()
     transaction_id = args.transaction_id or _pick_fraud_transaction_id(engine)
-    graph = build_evidence_graph(engine, transaction_id)
-    if args.persist:
-        persist_evidence_graph(engine, graph)
-    case = case_input_from_graph(engine, graph)
-    result = run_case(case, MockLLMClient(), PolicyRAG())
+    outcome = create_and_run_case(engine, transaction_id, persist=args.persist)
+    case = outcome.case
+    result = outcome.result
 
     print(f"Live case {case.case_id} (transaction {case.transaction_id}):")
     print(f"  customer_message: {case.customer_message[:120]}")
@@ -172,11 +208,11 @@ def main() -> None:
     print(f"  contradictions: {len(case.contradictions)}")
 
     if args.persist:
-        decision_id, was_duplicate = persist_decision(
-            engine, case, result, MockLLMClient.model_name
-        )
+        decision_id, was_duplicate = outcome.decision_id, outcome.was_duplicate
         print(f"  persisted: decision_id={decision_id} was_duplicate={was_duplicate}")
         if args.persist_twice:
+            from src.agents.llm_client import MockLLMClient
+
             decision_id_2, was_duplicate_2 = persist_decision(
                 engine, case, result, MockLLMClient.model_name
             )

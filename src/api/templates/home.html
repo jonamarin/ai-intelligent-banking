@@ -1,0 +1,36 @@
+{% extends "base.html" %}
+{% block title %}Home — AI Fraud & Dispute Investigator{% endblock %}
+{% block content %}
+<div class="role-banner">Current session role: <strong>{{ role }}</strong></div>
+
+<div class="card">
+  <h2>Start or open a case</h2>
+  <p style="color: var(--muted); font-size: 0.9em;">
+    Enter a real <code>transaction_id</code> from the loaded LATAM Bank sample to build the
+    evidence graph and run it through orchestration (creates a real, persisted case).
+  </p>
+  <form onsubmit="return onCreateCaseSubmit(event)">
+    <input type="text" id="transaction-id-input" placeholder="e.g. TRX-XXXXXXXXXXXXXXXXXXXX" required>
+    <button type="submit" class="btn-primary">Create case</button>
+  </form>
+</div>
+
+{% if role in ('analyst', 'supervisor') %}
+<div class="card">
+  <h2>Analyst review queue</h2>
+  <p style="color: var(--muted); font-size: 0.9em;">
+    Every case created above, with its current status and pending-review flag.
+  </p>
+  <a class="btn btn-primary" href="/analyst/cases">Open review queue</a>
+</div>
+{% else %}
+<div class="card">
+  <h2>Analyst review queue</h2>
+  <p style="color: var(--muted); font-size: 0.9em;">
+    Switch to the <strong>analyst</strong> role above to open the review queue — this is
+    server-side enforced (a customer session gets a real 403 on the underlying API, not just a
+    hidden link, docs/security-model.md § "least privilege").
+  </p>
+</div>
+{% endif %}
+{% endblock %}

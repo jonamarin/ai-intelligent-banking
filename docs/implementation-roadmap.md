@@ -224,21 +224,39 @@ in another — reliability tests were built in full this phase, not skipped; the
 degradation half of Scenario F remains untestable because Phase 4's model was never wired into
 orchestration at all (a pre-existing gap, honestly reported, not new here).
 
-## Phase 10 — UI
+## Phase 10 — UI — `IMPLEMENTED` (see docs/project-status.md § Phase 10 detail)
 
 **Objective:** customer, analyst, and (optionally) executive views exist. **Scope:** customer
 chat view (no internal risk detail exposed), analyst view (case, evidence graph, both
 explanations, audit trail, approval controls — `docs/human-oversight.md`), executive dashboard
 (`OPEN QUESTION` whether to build, per `docs/product-requirements.md` § 14). Frontend
 framework decided here (`docs/architecture.md` § 15, `OPEN QUESTION`). **Deliverables:**
-working UI against the real API from Phases 1–9. **Dependencies:** Phases 1–9 (needs a real
-API to render). **Tests:** basic UI smoke tests; manual verification per the "test the golden
-path in a browser" standard. **Security:** UI never renders more certainty than the backend
-evidence supports (`docs/domain-model.md` § 4); customer view never leaks internal risk
-scores/evidence. **Exit criteria:** all four demo scenarios (`docs/demo-script.md`
-Scenarios A–D) are drivable through the UI, not just the API. **Risks:** UI work can balloon
-past the time budget — prioritize the analyst evidence-graph view (the project's visual
-centerpiece, `prompt.md` § 36) over polish elsewhere.
+working UI against the real API from Phases 1–9. **Delivered as:** `src/api/cases.py` (the
+JSON API — `docs/api-contracts.md` § 1, previously only `/health` existed) and `src/api/ui.py` +
+`templates/`/`static/` (server-rendered Jinja2 + vanilla JS, no separate framework — resolving
+§ 15's `OPEN QUESTION`, see `docs/architecture.md` § 15 and `src/api/README.md` for the
+reasoning). Executive dashboard: **not built**, per this phase's own risk note and the
+`product-requirements.md` § 14 `OPEN QUESTION` — an explicit scope decision, not an oversight.
+**Dependencies:** Phases 1–9 (needs a real API to render) — the API itself didn't exist before
+this phase either (only `/health` did) and was built here as a prerequisite, wiring
+`src/orchestration/live_case.py`'s `create_and_run_case()` and `src/policies/gateway.py`'s
+`approve_pending_action()` to HTTP for the first time. **Tests:** `tests/unit/test_api_cases.py`
+(18, offline, role-gating/validation/404s) plus manual verification in a real browser
+(`.claude/rules/frontend.md`) — met. **Security:** role-shaped responses
+(`CustomerCaseView`/`AnalystCaseView`) enforced server-side, verified live: a customer session
+gets a real 403 on the review queue and the review endpoint, not just a hidden UI control.
+**Exit criteria:** `docs/demo-script.md` Scenarios A, B, and D are drivable live through the UI,
+verified in a real browser end-to-end (create case -> evidence graph with real contradictions
+-> dual explanation -> approve -> status updates). **Scenario C (ask a clarifying question) is
+NOT currently drivable live** — a real, honestly-reported gap found while verifying this exit
+criterion: `src/orchestration/live_case.py` always sets `candidate_questions=[]` for a live
+case, so `MockLLMClient.decide_next_question()` can never return `should_ask=True` for one;
+`ask_question` only ever occurs for offline golden-case fixtures (which aren't wired into the
+API), a pre-existing Phase 6 gap this phase's own UI testing is what surfaced, not something
+Phase 10 was scoped to fix. **Risks:** confirmed as anticipated — prioritized the analyst
+evidence-graph view over polish, per this phase's own risk note; a genuine persistence gap was
+found and fixed along the way (`decisions.customer_explanation_es` didn't exist before this
+phase — see `src/api/README.md`).
 
 ## Phase 11 — Evaluation
 

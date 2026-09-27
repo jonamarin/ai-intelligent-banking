@@ -1,0 +1,29 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}AI Fraud & Dispute Investigator{% endblock %}</title>
+  <link rel="stylesheet" href="/static/style.css">
+  <script src="/static/app.js" defer></script>
+</head>
+<body>
+  <header class="topbar">
+    <a href="/">AI Fraud &amp; Dispute Investigator</a>
+    <div class="role-switch">
+      <span style="color: var(--muted); font-size: 0.85em;">session role:</span>
+      <a href="/session/customer" class="{{ 'active' if role == 'customer' else '' }}">customer</a>
+      <a href="/session/analyst" class="{{ 'active' if role == 'analyst' else '' }}">analyst</a>
+      <a href="/session/supervisor" class="{{ 'active' if role == 'supervisor' else '' }}">supervisor</a>
+    </div>
+  </header>
+  <main>
+    {% block content %}{% endblock %}
+    <p class="trust-notice">
+      Demo prototype — synthetic data only (CLAUDE.md § 1). The role switcher above is a
+      <strong>trusted test identity abstraction</strong>, not real authentication
+      (docs/security-model.md § 3) — anyone can switch roles for this demo session.
+    </p>
+  </main>
+</body>
+</html>

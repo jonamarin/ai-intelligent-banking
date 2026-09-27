@@ -1,16 +1,17 @@
 """FastAPI application factory.
 
-Phase 1 scope only: health check, correlation-ID propagation, structured error
-responses. Domain endpoints (docs/api-contracts.md § 1) are added in later phases
-alongside the layers they depend on (Phases 2, 5-7) — do not add them here ahead
-of those layers existing, per docs/implementation-roadmap.md.
+Phase 1: health check, correlation-ID propagation, structured error responses.
+Phase 10 adds the domain endpoints (`docs/api-contracts.md` § 1, `src/api/cases.py`)
+and the server-rendered UI (`src/api/ui.py`) on top — see those modules for detail.
 """
 
 import uuid
 from collections.abc import Awaitable, Callable
+from pathlib import Path
 
 from fastapi import FastAPI, Request, Response
 from fastapi.exceptions import RequestValidationError
+from fastapi.staticfiles import StaticFiles
 
 from src.api.errors import (
     AppError,
@@ -22,6 +23,7 @@ from src.config.logging import configure_logging
 from src.config.settings import get_settings
 
 CORRELATION_ID_HEADER = "X-Correlation-ID"
+_STATIC_DIR = Path(__file__).parent / "static"
 
 
 def create_app() -> FastAPI:
@@ -50,6 +52,13 @@ def create_app() -> FastAPI:
     @app.get("/api/v1/health")
     async def health() -> dict[str, str]:
         return {"status": "ok", "environment": settings.environment}
+
+    from src.api.cases import router as cases_router
+    from src.api.ui import router as ui_router
+
+    app.include_router(cases_router)
+    app.include_router(ui_router)
+    app.mount("/static", StaticFiles(directory=_STATIC_DIR), name="static")
 
     return app
 

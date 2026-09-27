@@ -1,0 +1,36 @@
+{% extends "base.html" %}
+{% block title %}Review queue — AI Fraud & Dispute Investigator{% endblock %}
+{% block content %}
+<div class="role-banner">Current session role: <strong>{{ role }}</strong></div>
+
+<div class="card">
+  <h2>Case review queue</h2>
+  {% if cases %}
+  <table>
+    <thead>
+      <tr><th>Case</th><th>Customer</th><th>Status</th><th>Decision</th><th>Human review</th><th>Created</th></tr>
+    </thead>
+    <tbody>
+      {% for c in cases %}
+      <tr>
+        <td><a href="/analyst/cases/{{ c.case_id }}">{{ c.case_id }}</a></td>
+        <td>{{ c.customer_id }}</td>
+        <td>{{ c.status }}</td>
+        <td>{{ c.decision or "—" }}</td>
+        <td>
+          {% if c.human_review_status == "pending" %}
+          <span class="pill pill-pending">pending</span>
+          {% else %}
+          {{ c.human_review_status or "—" }}
+          {% endif %}
+        </td>
+        <td>{{ c.created_at }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <p class="empty-state">No cases yet — create one from the home page.</p>
+  {% endif %}
+</div>
+{% endblock %}

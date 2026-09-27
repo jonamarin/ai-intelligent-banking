@@ -4,18 +4,17 @@ Owns: verified current implementation state. This document must never represent 
 functionality as implemented. Update it whenever a meaningful implementation phase
 (`docs/implementation-roadmap.md`) completes, changes, or blocks.
 
-**Last meaningful update:** 2026-09-27 (Phase 9 — Reliability implemented and verified).
+**Last meaningful update:** 2026-09-27 (Phase 10 — UI implemented and verified).
 **Last validation:** 2026-09-27 — actually run, not just inspected: `uv run ruff check .`
-(clean), `uv run mypy src` (clean, 70 files), `uv run pytest` (111/111 passed), all 10
-`evaluation/golden_cases/*.json` fixtures run end-to-end (including `dependency_failure.json`
-now genuinely routed through a failing LLM client), and a live round trip against the real
-database proving idempotency (one `Decision` row + one `action.executed` event after two
-`persist_decision()` calls with the same key) and a bounded, clear DB-unavailable failure
-(§ Phase 9 detail below).
+(clean), `uv run mypy src` (clean, 74 files), `uv run pytest` (129/129 passed), and a full
+golden-path walkthrough in a real Chrome browser (create case -> evidence graph with two real
+contradictions -> dual explanation -> approve -> status updates), plus role-gating (customer
+403s on the review queue and review endpoint) and idempotent duplicate-review handling verified
+live via curl against the real API and database (§ Phase 10 detail below).
 
 ## Current phase
 
-Phase 9 (Reliability) complete. This repository now contains: the original master prompt
+Phase 10 (UI) complete. This repository now contains: the original master prompt
 (`prompt.md`), the competition brief (`project_presentation.txt`), the LATAM Bank dataset
 documentation (two PDFs at the repository root), the raw LATAM Bank dataset itself
 (`data/raw/`, git-ignored, ~5.0 GB — `docs/data-lineage.md` § 1), the Claude Code operating
@@ -25,16 +24,15 @@ ingestion pipeline (Phase 3), a trained, evaluated fraud model with a documented
 finding (Phase 4), a working Evidence Engine that has built and persisted real evidence graphs
 (Phase 5), a working case orchestration state machine (Phase 6), a real deterministic
 authorization path (Phase 7), a centralized PII/secret redaction layer and red-team test suite
-(Phase 8), and now real handling for the failure modes in `docs/architecture.md` § 10: bounded
-LLM retries with a deterministic fallback path (Scenario E), a bounded database-connection
-timeout (never an indefinite hang), RAG-failure graceful degradation, and a real,
-database-enforced idempotency mechanism for state-changing actions (Scenario J) — closing the
-last major documented gap carried since Phase 7. See `src/orchestration/README.md` §
-Reliability and `src/policies/README.md`.
+(Phase 8), real reliability handling for LLM/DB/RAG failure and idempotency (Phase 9), and now
+a real JSON API (`docs/api-contracts.md` § 1 — previously only `/health` existed) plus a
+server-rendered customer/analyst UI on top of it — the first live, HTTP-reachable consumer of
+everything Phases 6-9 built. See `src/api/README.md`.
 **Irreversible/Critical actions still require human approval unconditionally, provably, even
 when the LLM is unavailable** — verified directly: a degraded case proposing a $100,000 transfer
 still produces `requires_human_approval=True` through the full fallback path
-(`docs/demo-script.md` Scenario D + Scenario E, together).
+(`docs/demo-script.md` Scenario D + Scenario E, together), and this now holds through the real
+HTTP/UI path too, not just the CLI scripts.
 
 ## Status by roadmap phase (`docs/implementation-roadmap.md`)
 
@@ -49,7 +47,7 @@ still produces `requires_human_approval=True` through the full fallback path
 | 7 — Policy Engine | IMPLEMENTED — see § Phase 7 detail below (Scenario D exit criteria met and tested against an actual bypass attempt; genuine remaining gaps — idempotency, risk-band/model-score wiring — honestly reported, not hidden) |
 | 8 — Security Hardening | IMPLEMENTED — see § Phase 8 detail below (0/17 unsafe actions in a measured, sample-size-stated adversarial suite; found and fixed a real injection-detection gap; several red-team cases honestly reported as not yet coverable, not silently claimed) |
 | 9 — Reliability | IMPLEMENTED — see § Phase 9 detail below (LLM fallback, DB timeout, RAG-failure degradation, and idempotency all verified — the idempotency round trip against a real database, the rest via `tests/reliability/`) |
-| 10 — UI | NOT_IMPLEMENTED |
+| 10 — UI | IMPLEMENTED — see § Phase 10 detail below (Scenarios A/B/D drivable live in a real browser, verified; Scenario C honestly reported as not yet reachable live — a pre-existing Phase 6 gap this phase's testing surfaced) |
 | 11 — Evaluation | NOT_IMPLEMENTED |
 | 12 — Demo | NOT_IMPLEMENTED |
 | 13 — Observability | NOT_IMPLEMENTED |
@@ -71,8 +69,8 @@ still produces `requires_human_approval=True` through the full fallback path
   (`docs/data-lineage.md` § 1).
 - **Phase 1 — Foundation**, **Phase 2 — Domain**, **Phase 3 — Ingestion**,
   **Phase 4 — Fraud ML**, **Phase 5 — Evidence Engine**, **Phase 6 — AI Agent /
-  Orchestration**, **Phase 7 — Policy Engine**, **Phase 8 — Security Hardening**, and
-  **Phase 9 — Reliability**, detailed below.
+  Orchestration**, **Phase 7 — Policy Engine**, **Phase 8 — Security Hardening**,
+  **Phase 9 — Reliability**, and **Phase 10 — UI**, detailed below.
 
 ### Phase 1 detail
 
@@ -582,6 +580,79 @@ every table, same as the Phase 3 verification methodology. Date range: 2026-03-2
   doesn't map that fixture's customer message to a `freeze_card` tool call — a Phase 6
   limitation, not a Phase 9 one). Full detail: `src/orchestration/README.md` § Reliability,
   `src/policies/README.md`.
+
+### Phase 10 detail
+
+- `src/api/deps.py`: the trusted-test-identity abstraction (`docs/security-model.md` § 3 — a
+  real identity system is explicitly out of scope for this prototype). A `role` cookie stands
+  in for a session; `require_reviewer_role` raises a real 403 for a customer session.
+- `src/api/schemas.py`: every request/response body, `extra="forbid"`. `GET /cases/{id}`
+  returns a role-shaped response — `CustomerCaseView` (status + plain-language explanation
+  only) vs `AnalystCaseView` (everything) — decided server-side by role, never a client flag.
+- `src/api/cases.py`: `docs/api-contracts.md` § 1's endpoints, wired to the exact same
+  functions the CLI scripts already used (`src.orchestration.live_case.create_and_run_case`,
+  `src.policies.gateway.approve_pending_action`) — not a second implementation. The analyst
+  case view re-derives contradictions live via `detect_contradictions()` from the persisted
+  evidence rows rather than needing a separate contradictions table.
+- `src/api/ui.py` + `templates/`/`static/`: server-rendered Jinja2 + vanilla JS, resolving
+  `docs/architecture.md` § 15's frontend-framework `OPEN QUESTION` — no Node/npm toolchain on
+  a machine already documented as memory-constrained throughout this project. Every UI route
+  calls `cases.py`'s own request-handling functions directly (overriding their `Depends(...)`
+  defaults with real values), so there is one implementation per view, not an API-plus-client
+  pair to keep in sync.
+- **A real, previously-undiscovered persistence gap found and fixed**: `CaseExplanation.
+  customer_explanation_es` (generated since Phase 6) was never persisted anywhere — only
+  `analyst_explanation` reached the `decisions` table. Nothing surfaced this until Phase 10
+  needed to *read it back* for the customer view. Fixed by splitting the old
+  `decisions.explanation` column into `analyst_explanation` + `customer_explanation_es`
+  (migration `319756c1c80a`), with existing rows backfilled into `analyst_explanation` rather
+  than silently dropped.
+- **A second real bug found and fixed live, not by inspection**: the `docker compose exec`
+  round trip that first exercised `POST /cases/{id}/review` twice in a row revealed that the
+  case's own `human_review_status` transition (not `pending` anymore after the first approval)
+  blocks a second submission *before* the idempotency-key check inside `approve_pending_action`
+  is ever reached — both layers turned out to matter for different failure modes (documented in
+  `src/api/README.md`, not silently treated as redundant).
+- **Verified live, end-to-end, via curl**: case creation against a real transaction; the
+  role-shaped `GET /cases/{id}` response (full detail as analyst, status-only as customer); a
+  403 for a customer session on the review queue and the review endpoint; an approval that
+  correctly transitioned `fraud_cases.status` to `resolved` and produced exactly one
+  `action.executed` audit event; an immediate resubmission correctly rejected
+  (`no_pending_review`, 409).
+- **Verified live, end-to-end, in a real Chrome browser**
+  (`.claude/rules/frontend.md`: "start the dev server and exercise the golden path... in a real
+  browser"): home page → created a case by transaction ID → redirected to the analyst case
+  detail → the evidence graph rendered with real data, including **two real contradictions**
+  from a genuinely mixed-evidence transaction, visually distinct (four badge states, never
+  shades of one color, `.claude/rules/frontend.md`) → the dual explanation panel showed both
+  the Spanish customer text and the technical analyst text → clicked **Approve** on a different,
+  genuinely pending case → page reloaded showing `status: resolved` and the review controls
+  correctly gone. Role switching (customer/analyst/supervisor) and the conditionally-shown
+  analyst-queue link were also verified.
+- **Scenario C (ask a clarifying question) found to not be drivable live** while verifying this
+  phase's own exit criterion: `src/orchestration/live_case.py` always sets
+  `candidate_questions=[]` for a live case, so `MockLLMClient.decide_next_question()` can never
+  return `should_ask=True` for one — `ask_question` only occurs for offline golden-case
+  fixtures, which aren't wired into the API. A pre-existing Phase 6 gap, surfaced (not created)
+  by this phase's own testing; honestly reported rather than silently worked around or claimed
+  met.
+- 18 new tests (`tests/unit/test_api_cases.py`) — role-gating, request validation, 404s,
+  offline against an in-memory SQLite engine (`StaticPool` — the API opens/closes a connection
+  per query, and a plain `sqlite:///:memory:` engine hands back a fresh empty database on each
+  connection without it). 129 unit/security/reliability tests total (10 Phase 1 + 7 Phase 2 +
+  3 Phase 3 + 5 Phase 4 + 13 Phase 5 + 10 Phase 6 + 20 Phase 7 + 20 Phase 8 + 23 Phase 9 + 18
+  Phase 10), all passing.
+- **Not done in this phase, by design or as an honestly-reported gap:** executive dashboard
+  (explicit scope decision — `OPEN QUESTION` in `docs/product-requirements.md` § 14, this
+  phase's own risk note says prioritize the analyst view instead); correlation-ID propagation
+  into audit events (`src/api/main.py`'s middleware generates one per request, but
+  `src/policies/gateway.py`/`src/evidence/persist.py` still always write
+  `correlation_id=None` — a real gap this phase surfaced, not new); per-customer
+  case-ownership scoping (`docs/api-contracts.md` § 2 — no customer identity exists to scope
+  by yet, only a role); live customer chat/message intake
+  (`POST /cases/{id}/messages` — not built; `customer_message` still comes from whatever
+  `call_transcripts` row already exists, not real-time typing); rate limiting (still `PLANNED`).
+  Full detail: `src/api/README.md`.
 
 ## In progress
 
