@@ -5,27 +5,31 @@ dispute intake and fraud investigation** for a synthetic LATAM retail bank. Buil
 Factored Datathon 2026 (`project_presentation.txt`), following the technical vision in
 `prompt.md`.
 
-> **Status: Phase 6 (AI Agent / Orchestration) complete.** This repository contains the
-> project's Claude Code operating system — architecture, domain model, security model,
-> guardrails, evaluation plan, and a phased implementation roadmap — a working application
-> foundation (FastAPI health check, structured/redacted logging, config, Docker, CI), a
-> complete, migrated PostgreSQL schema for every entity in `docs/domain-model.md`, a verified
-> ingestion pipeline that has loaded real (synthetic) data into it, a trained, evaluated fraud
-> model with an honestly-reported result (**it performs near chance on the currently loaded
-> sample** — a real finding, see `src/ml/README.md`, not a bug), a working Evidence Engine that
-> has built and persisted real evidence graphs — **including genuinely detected
-> contradictions** — for real transactions (see `src/evidence/README.md`), and now a working
-> case orchestration state machine (intent extraction, injection refusal, next-best-question
-> gating, action proposal, RAG-grounded policy citation, dual explanation) verified against all
-> 10 `evaluation/golden_cases/` fixtures and 2 real live transactions (see
-> `src/orchestration/README.md`). **A bounded recent-date sample is loaded, not the full
-> ~19M-row dataset** (the dev machine has too little free RAM for that right now — see
-> `src/ingestion/README.md`); **no policy engine** — that's Phase 7. Every action Phase 6
-> produces is a proposal only — `flow.py` never imports the action-tool module at all — and its
-> only legitimate offline escalation signal is evidence-graph contradiction; 2 of the 10 golden
-> cases honestly expose scenarios that need escalation for other reasons (an amount threshold,
-> an action's risk classification), which is exactly the gap Phase 7 exists to close, not a
-> defect. The Evidence Engine's device fingerprint is a documented heuristic proxy, and its
+> **Status: Phase 7 (Policy Engine) complete.** This repository contains the project's Claude
+> Code operating system — architecture, domain model, security model, guardrails, evaluation
+> plan, and a phased implementation roadmap — a working application foundation (FastAPI health
+> check, structured/redacted logging, config, Docker, CI), a complete, migrated PostgreSQL
+> schema for every entity in `docs/domain-model.md`, a verified ingestion pipeline that has
+> loaded real (synthetic) data into it, a trained, evaluated fraud model with an
+> honestly-reported result (**it performs near chance on the currently loaded sample** — a real
+> finding, see `src/ml/README.md`, not a bug), a working Evidence Engine that has built and
+> persisted real evidence graphs — **including genuinely detected contradictions** — for real
+> transactions (see `src/evidence/README.md`), a working case orchestration state machine
+> (intent extraction, injection refusal, next-best-question gating, action proposal,
+> RAG-grounded policy citation, dual explanation), and now a real deterministic **Policy
+> Engine**: fixed action-risk classification, the tool-authorization chain (authenticated? case
+> eligible? sufficient evidence? risk-appropriate automation? human approval?), and
+> DB-backed Decision/AuditEvent/HumanReview persistence for live cases (see
+> `src/policies/README.md`). **Irreversible/Critical actions require human approval
+> unconditionally, provably** — a test that tries to bypass this (a permissive policy config, a
+> manufactured high-confidence AI recommendation claiming no approval is needed) exists and
+> fails, closing exactly the gap Phase 6 honestly left open. **A bounded recent-date sample is
+> loaded, not the full ~19M-row dataset** (the dev machine has too little free RAM for that
+> right now — see `src/ingestion/README.md`). **Genuine remaining gaps, honestly reported:**
+> idempotency-key verification doesn't exist yet (Phase 9's scope); no real
+> authentication/session layer exists (Phase 8's job); risk-band fraud-probability thresholds
+> aren't wired in because Phase 4's model score was never plumbed into orchestration. The
+> Evidence Engine's device fingerprint is a documented heuristic proxy, and its
 > direction/confidence values are illustrative, never approved policy. See
 > `docs/project-status.md` for the authoritative, up-to-date state. Every claim in this README
 > is labeled `Implemented`, `Planned`, `Partial`, or `Mocked` — treat anything unlabeled as
@@ -89,10 +93,11 @@ docs/                         Architecture, domain model, security, evaluation, 
 .claude/                      Rules, skills, agents, hooks, settings for Claude Code sessions
 evaluation/golden_cases/      Synthetic scenario fixtures (schema + 10 cases)
 src/                           FastAPI app, config/logging, domain models, ingestion pipeline,
-                                fraud ML, evidence engine, AI agent + orchestration
-                                (implemented); other subpackages are future-phase skeletons
+                                fraud ML, evidence engine, AI agent + orchestration, policy
+                                engine (implemented); other subpackages are future-phase
+                                skeletons
 alembic/                       Migrations (implemented) — 17 tables + 1 link table
-tests/unit/                   48 passing unit tests
+tests/unit/                   68 passing unit tests
 data/raw/                      Raw LATAM Bank dataset (git-ignored, ~5.0 GB — not in git)
 data/models/                   Trained model artifacts (git-ignored — binary, not committed)
 data/reports/                  Ingestion + fraud-model reports (committed — small aggregate stats)
@@ -112,7 +117,7 @@ Verified working (`docs/project-status.md`):
 git clone <repo> && cd ai-intelligent-banking
 cp .env.example .env                  # fill in real values only if you need them; mock LLM mode needs none
 uv sync                               # installs dependencies into .venv
-uv run pytest                         # 48/48 passing (offline — model/ingestion/ML/evidence/orchestration tests use in-memory SQLite / fixtures)
+uv run pytest                         # 68/68 passing (offline — model/ingestion/ML/evidence/orchestration/policy tests use in-memory SQLite / fixtures)
 uv run ruff check . && uv run mypy src   # lint + typecheck, both clean
 docker compose up -d                  # api on :8080, db (pgvector/pg16) on :5433
 curl http://localhost:8080/api/v1/health
@@ -133,8 +138,8 @@ DATABASE_URL="postgresql+psycopg://banking:banking@localhost:5433/banking_ai" uv
 
 # run the case orchestrator — offline, no DB, no API key (src/orchestration/README.md)
 uv run python -m src.orchestration.run_golden_cases
-# or against a real transaction:
-DATABASE_URL="postgresql+psycopg://banking:banking@localhost:5433/banking_ai" uv run python -m src.orchestration.live_case --pick-fraud
+# or against a real transaction, with the Policy Engine persisting a real Decision (src/policies/README.md):
+DATABASE_URL="postgresql+psycopg://banking:banking@localhost:5433/banking_ai" uv run python -m src.orchestration.live_case --pick-fraud --persist
 
 docker compose down
 ```
@@ -143,7 +148,7 @@ docker compose down
 runs the ingestion command above), but **`make` itself was not installed on the machine this
 was verified on** — install it if you want the shorter form, or just use the `uv`/`docker`
 commands directly. Running the API against the loaded data, full system evaluation, and the
-demo are all `Planned` — they need Phase 7+ (policy engine) first.
+demo are all `Planned` — they need Phase 8+ (security hardening, reliability) first.
 
 ## 7. Demo scenarios — `Planned`
 

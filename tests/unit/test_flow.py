@@ -14,6 +14,10 @@ docstring for why). What's checked here are invariants that must hold for
 - `auto_resolve` is never proposed when the evidence graph itself flagged a
   contradiction (docs/guardrails.md § "never resolve automatically over
   contradictory evidence")
+- an Irreversible/Critical action (docs/decision-policy.md § 6) requires
+  human approval end-to-end, through the full run_case() pipeline, even when
+  the mock LLM itself recommends auto-resolving with no approval needed
+  (docs/demo-script.md Scenario D — the Phase 7 exit criteria)
 - every golden case fixture loads and runs without raising
 """
 
@@ -46,6 +50,8 @@ def _case(
     evidence_items: list[EvidenceItem] | None = None,
     contradictions: list[tuple[str, str]] | None = None,
     escalation_required: bool = False,
+    transaction_type: str | None = None,
+    amount_usd: float | None = None,
 ) -> CaseInput:
     return CaseInput(
         case_id="TEST-CASE",
@@ -56,6 +62,8 @@ def _case(
         contradictions=contradictions or [],
         escalation_required=escalation_required,
         candidate_questions=[],
+        transaction_type=transaction_type,
+        amount_usd=amount_usd,
     )
 
 
@@ -107,6 +115,28 @@ def test_auto_resolve_never_proposed_over_a_contradiction() -> None:
     )
     result = run_case(case, MockLLMClient())
     assert result.action.proposed_action != "auto_resolve"
+
+
+def test_irreversible_action_requires_human_approval_end_to_end() -> None:
+    """docs/demo-script.md Scenario D, run through the full pipeline
+    (flow.run_case), not just authorization.authorize() in isolation
+    (tests/unit/test_authorization.py already covers that unit). Evidence
+    here is deliberately clean/legitimate so the mock LLM recommends
+    auto_resolve with no human approval — the guarantee must hold anyway,
+    because it comes from the case's own transaction facts, not from
+    anything the LLM said."""
+    case = _case(
+        "Necesito que se procese una transferencia de $100,000 USD a esta otra cuenta.",
+        evidence_items=[_evidence(EvidenceDirection.SUPPORTS_LEGITIMATE, 0.99)],
+        transaction_type="Transfer",
+        amount_usd=100_000.0,
+    )
+    result = run_case(case, MockLLMClient())
+    assert result.action.proposed_action == "auto_resolve"
+    assert result.action.requires_human_approval is False  # the (mock) LLM's own recommendation
+    assert result.authorization is not None
+    assert result.authorization.action_risk == "irreversible"
+    assert result.authorization.requires_human_approval is True  # policy overrides it anyway
 
 
 def test_every_golden_case_runs_without_raising() -> None:

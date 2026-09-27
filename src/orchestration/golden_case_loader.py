@@ -40,10 +40,12 @@ def load_golden_case(path: Path) -> CaseInput:
         for i, e in enumerate(raw.get("evidence", []))
     ]
 
+    facts = raw.get("available_facts", {})
+
     return CaseInput(
         case_id=raw["case_id"],
-        customer_id=raw.get("available_facts", {}).get("customer_id", "UNKNOWN"),
-        transaction_id=raw.get("available_facts", {}).get("transaction_id"),
+        customer_id=facts.get("customer_id", "UNKNOWN"),
+        transaction_id=facts.get("transaction_id"),
         customer_message=raw["synthetic_input"]["customer_message"],
         evidence_items=items,
         contradictions=detect_contradictions(items),
@@ -51,13 +53,29 @@ def load_golden_case(path: Path) -> CaseInput:
         # golden case's expected *answer*, and using it here would make run_golden_cases.py
         # circular (grading the orchestrator against a signal built from the grade itself).
         # The only escalation signal Phase 6 can legitimately compute offline is contradictory
-        # evidence. Cases like high_value_transfer that require mandatory escalation for reasons
-        # other than evidence contradiction (e.g. amount thresholds) will NOT be escalated by
-        # this evidence-only reasoning — that gap is real, and is exactly what the policy engine
-        # (Phase 7) is for. See docs/implementation-roadmap.md Phase 7.
+        # evidence — Phase 7's Policy Engine (src/policies/) now independently classifies
+        # action-risk from `transaction_type`/`amount_usd`/`requested_action` below, which is
+        # what actually closes the high_value_transfer gap Phase 6 left honestly open.
         escalation_required=bool(detect_contradictions(items)),
         candidate_questions=_derive_candidate_questions(raw),
+        transaction_type=facts.get("transaction_type"),
+        amount_usd=_usd_amount(facts, "amount", "currency"),
+        requested_action=facts.get("requested_action"),
+        requested_amount_usd=_usd_amount(facts, "requested_amount", "requested_currency"),
     )
+
+
+def _usd_amount(facts: dict, amount_key: str, currency_key: str) -> float | None:
+    # No exchange-rate data is loaded in an offline golden-case fixture
+    # context (docs/project-status.md § Phase 4 detail: conversion needs
+    # daily_exchange_rates) — only fixtures already denominated in USD get a
+    # numeric amount here; anything else stays honestly `None` rather than a
+    # guessed conversion.
+    amount = facts.get(amount_key)
+    currency = facts.get(currency_key)
+    if amount is None or (currency and currency != "USD"):
+        return None
+    return float(amount)
 
 
 def _derive_candidate_questions(raw: dict) -> list[str]:

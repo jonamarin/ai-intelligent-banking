@@ -4,30 +4,32 @@ Owns: verified current implementation state. This document must never represent 
 functionality as implemented. Update it whenever a meaningful implementation phase
 (`docs/implementation-roadmap.md`) completes, changes, or blocks.
 
-**Last meaningful update:** 2026-09-26 (Phase 6 — AI Agent / Orchestration implemented and
-verified).
+**Last meaningful update:** 2026-09-26 (Phase 7 — Policy Engine implemented and verified).
 **Last validation:** 2026-09-26 — actually run, not just inspected: `uv run ruff check .`
-(clean), `uv run mypy src` (clean, 61 files), `uv run pytest` (48/48 passed), all 10
-`evaluation/golden_cases/*.json` fixtures run end-to-end through the orchestration flow in
-`LLM_MODE=mock`, and two real transactions from Phase 5's evidence graphs run end-to-end
-through `live_case.py` against the live database (§ Phase 6 detail below).
+(clean), `uv run mypy src` (clean, 66 files), `uv run pytest` (68/68 passed), all 10
+`evaluation/golden_cases/*.json` fixtures run end-to-end through the orchestration flow with
+real authorization decisions attached, and two real live transactions run end-to-end through
+`live_case.py --persist` against the live database, including a full
+Decision -> AuditEvent -> human approval -> AuditEvent round trip (§ Phase 7 detail below).
 
 ## Current phase
 
-Phase 6 (AI Agent / Orchestration) complete. This repository now contains: the original master
-prompt (`prompt.md`), the competition brief (`project_presentation.txt`), the LATAM Bank dataset
+Phase 7 (Policy Engine) complete. This repository now contains: the original master prompt
+(`prompt.md`), the competition brief (`project_presentation.txt`), the LATAM Bank dataset
 documentation (two PDFs at the repository root), the raw LATAM Bank dataset itself
 (`data/raw/`, git-ignored, ~5.0 GB — `docs/data-lineage.md` § 1), the Claude Code operating
 system (`CLAUDE.md`, `docs/`, `.claude/`, `evaluation/golden_cases/`), a working application
 foundation (Phase 1), a complete, migrated domain schema (Phase 2), a working, verified
 ingestion pipeline (Phase 3), a trained, evaluated fraud model with a documented, honest
 finding (Phase 4), a working Evidence Engine that has built and persisted real evidence graphs
-(Phase 5), and now a working case orchestration state machine — intent extraction, injection
-refusal, next-best-question gating, action proposal, RAG-grounded policy citation, and dual
-(customer/analyst) explanation — verified against both offline fixtures and live evidence
-graphs (Phase 6). **No policy engine — that's Phase 7. Every action this phase produces is a
-proposal only; nothing is executed or persisted, and `flow.py` doesn't even import
-`src/tools/action_tools.py` — see `src/orchestration/README.md`.**
+(Phase 5), a working case orchestration state machine (Phase 6), and now a real deterministic
+authorization path: fixed action-risk classification, the tool-authorization chain
+(authenticated? case eligible? sufficient evidence? risk-appropriate automation? human
+approval?), and DB-backed Decision/AuditEvent/HumanReview persistence for live cases (Phase 7).
+**Irreversible/Critical actions require human approval unconditionally, provably — a test that
+tries to bypass this (a permissive policy config, a manufactured high-confidence AI
+recommendation claiming no approval is needed) exists and fails, per
+`docs/demo-script.md` Scenario D's exit criteria. See `src/policies/README.md`.**
 
 ## Status by roadmap phase (`docs/implementation-roadmap.md`)
 
@@ -39,7 +41,7 @@ proposal only; nothing is executed or persisted, and `flow.py` doesn't even impo
 | 4 — Fraud ML | IMPLEMENTED — see § Phase 4 detail below (real, honestly-reported near-chance result — see detail) |
 | 5 — Evidence Engine | IMPLEMENTED — see § Phase 5 detail below (real evidence graphs + contradiction detection verified against live data) |
 | 6 — AI Agent | IMPLEMENTED — see § Phase 6 detail below (mock-LLM orchestration verified against all 10 golden cases + 2 live transactions; genuine gaps found and honestly reported, not hidden) |
-| 7 — Policy Engine | NOT_IMPLEMENTED |
+| 7 — Policy Engine | IMPLEMENTED — see § Phase 7 detail below (Scenario D exit criteria met and tested against an actual bypass attempt; genuine remaining gaps — idempotency, risk-band/model-score wiring — honestly reported, not hidden) |
 | 8 — Security Hardening | NOT_IMPLEMENTED |
 | 9 — Reliability | NOT_IMPLEMENTED |
 | 10 — UI | NOT_IMPLEMENTED |
@@ -63,8 +65,8 @@ proposal only; nothing is executed or persisted, and `flow.py` doesn't even impo
 - Raw LATAM Bank dataset downloaded to `data/raw/` from the organizer-provided S3 bucket
   (`docs/data-lineage.md` § 1).
 - **Phase 1 — Foundation**, **Phase 2 — Domain**, **Phase 3 — Ingestion**,
-  **Phase 4 — Fraud ML**, **Phase 5 — Evidence Engine**, and **Phase 6 — AI Agent /
-  Orchestration**, detailed below.
+  **Phase 4 — Fraud ML**, **Phase 5 — Evidence Engine**, **Phase 6 — AI Agent /
+  Orchestration**, and **Phase 7 — Policy Engine**, detailed below.
 
 ### Phase 1 detail
 
@@ -358,7 +360,9 @@ every table, same as the Phase 3 verification methodology. Date range: 2026-03-2
   way to compute; `duplicate_action` needs an action-risk classification rule), and the
   remaining cases hinge on prose nuance no automated check should grade. See
   `src/orchestration/README.md` for the full table and reasoning — the two gaps are exactly
-  what Phase 7 (Policy Engine) is scoped to close, not a defect in this phase.
+  what Phase 7 (Policy Engine) is scoped to close, not a defect in this phase. **Update
+  (2026-09-26, Phase 7):** the `high_value_transfer` gap is now closed — see § Phase 7 detail
+  below; `duplicate_action` remains open (idempotency is Phase 9's scope, not Phase 7's).
 - **Verified against 2 real, live transactions** via `live_case.py` against the real database
   (the same two transactions Phase 5's evidence graphs were built and persisted for): the clean
   evidence case produced `auto_resolve`/no approval required, and the case with 2 detected
@@ -378,6 +382,78 @@ every table, same as the Phase 3 verification methodology. Date range: 2026-03-2
   `HumanReview` row is persisted, no real LLM provider is called — `flow.py` deliberately
   doesn't import `src/tools/action_tools.py` at all, so building the orchestrator before Phase
   7's policy engine exists can't accidentally wire direct execution.
+
+### Phase 7 detail
+
+- `src/policies/`: `action_risk.py` (fixed action-risk classification table, keyed by tool and
+  by transaction/requested-action facts — never by LLM output; unrecognized tool defaults to
+  `"high"`), `config.py` (`PolicyConfig` — every threshold explicitly `PROPOSED`, no
+  `automate_irreversible` field exists at all), `authorization.py` (the tool-authorization
+  chain: authenticated? case eligible? sufficient evidence? classify risk -> automation
+  allowed? -> human approval required?), `gateway.py` (DB-backed `persist_decision()` /
+  `approve_pending_action()` for live cases).
+- `src/orchestration/flow.py` now maps the LLM's `ActionProposal` to a real `ToolProposal`
+  (`src/tools/action_tools.py`, including a new `propose_close_case_no_action` for
+  `auto_resolve`) and calls `authorize()`, storing the result on the new
+  `CaseResult.authorization` field. `CaseInput` gained `case_status`/`transaction_type`/
+  `amount_usd`/`requested_action`/`requested_amount_usd` so the Policy Engine can classify
+  action-risk from real case facts, independent of anything the LLM recommends.
+- **Scenario D exit criteria met and tested against an actual bypass attempt**
+  (`docs/implementation-roadmap.md` Phase 7: "a test that tries to bypass it and fails"):
+  `evaluation/golden_cases/high_value_transfer.json` (a manufactured 0.99-confidence
+  "legitimate" evidence item on a $100,000 Transfer) now produces
+  `action_risk="irreversible"`, `requires_human_approval=True`, overriding the mock LLM's own
+  `auto_resolve`/no-approval recommendation — closing exactly the gap Phase 6 honestly left
+  open. `tests/unit/test_authorization.py` includes a test with a policy config that would
+  automate every other risk level, and a test with a `ToolProposal` that itself claims
+  `requires_human_approval=False`; both still produce `requires_human_approval=True`, because
+  the Irreversible branch reads no config value at all.
+- **Verified live, in real data, not manufactured for the demo**: `live_case.py --persist`
+  against the real `is_fraud=true` transaction already used as Phase 5's example
+  (`TRX-MXCWNPT6UVBUMBBVOPWM`) turned out to be a real `transaction_type="Transfer"` of
+  $9,491.99 USD-equivalent — the Policy Engine correctly forced `requires_human_approval=True`
+  against a real database row, and a full audit trail was produced and verified end-to-end:
+  `evidence.graph.created -> risk.assessment.completed -> human.review.required ->` (after
+  calling `approve_pending_action()` to simulate a human approving it) `-> action.executed`,
+  with a real `Decision` row, linked `Evidence` rows via `decision_evidence`, and a real
+  `HumanReview` row (kept structurally distinct from `Decision`, per
+  `docs/human-oversight.md` § 4) — all confirmed with direct `SELECT` queries, not just
+  application-log trust.
+- **A genuinely subtle, non-bug finding**: running the second live transaction
+  (`TRX-SMPYV51IQT9JPNQ56BMR`, 2 real contradictions) through `escalate` produced
+  `authorization.requires_human_approval=False`, which at first glance looks inconsistent with
+  the LLM's own `requires_human_approval=True` on the same result. It isn't:
+  `AuthorizationResult.requires_human_approval` answers "does *this tool call* need approval
+  before executing," and the tool `escalate` maps to (`create_human_review`) is itself Low
+  action-risk — opening a review ticket needs no pre-approval; that's precisely the mechanism
+  that routes the case to a human next. Documented in `src/policies/README.md` so it isn't
+  mistaken for a bug later.
+- **Security review run manually against `.claude/skills/review-security/SKILL.md`'s
+  checklist** (`.claude/rules/security.md`'s standing requirement for any change touching
+  authorization): found and fixed one real gap — `gateway.persist_decision()` originally
+  collapsed both no-tool-call outcomes (`ask_question`/`refuse`) to a single generic
+  `risk.assessment.completed` audit event, silently dropping the injection-detection signal
+  from the audit trail for a live-persisted refusal. Fixed with a dedicated
+  `_no_tool_audit_events()` helper that adds `security.injection_attempt_detected` and
+  `action.rejected` for a refusal. Everything else on the checklist held — full detail,
+  including why `is_authenticated` defaulting `True` is a documented scope boundary rather than
+  an unsafe default, in `src/policies/README.md`.
+- 20 new unit tests: `tests/unit/test_action_risk.py` (7), `tests/unit/test_authorization.py`
+  (12 — an allow path and a deny path for every guardrail row this phase introduces), plus one
+  new end-to-end test added to `tests/unit/test_flow.py`
+  (`test_irreversible_action_requires_human_approval_end_to_end`). 68 unit tests total (10
+  Phase 1 + 7 Phase 2 + 3 Phase 3 + 5 Phase 4 + 13 Phase 5 + 10 Phase 6 + 20 Phase 7), all
+  passing. `gateway.py` has no offline unit test — like `src/evidence/persist.py` before it,
+  it's DB-only code, verified live against the real database above, not mocked.
+- **Not done in this phase, by design or as an honestly-reported gap:** no real
+  authentication/session layer exists yet (`is_authenticated` defaults `True` everywhere —
+  Phase 8's job to give this a real deny path); idempotency-key verification does not exist
+  (explicitly Phase 9's scope — `evaluation/golden_cases/duplicate_action.json` remains open);
+  risk-band fraud-probability thresholds (`docs/decision-policy.md` § 5) are not wired in at
+  all, because Phase 4's model score was never plumbed into `CaseInput` (a pre-existing gap,
+  not new to this phase); `docs/demo-script.md` Scenario L has no golden-case fixture yet, so
+  its `case_not_eligible` denial path is exercised only by hand-built unit tests. Full detail,
+  including the exact wording of every gap: `src/policies/README.md`.
 
 ## In progress
 

@@ -138,21 +138,36 @@ contradiction-driven cases but cannot satisfy scenarios requiring escalation for
 this gap honestly rather than being made to look correct. This is exactly the gap Phase 7 is
 scoped to close, not a defect to work around here.
 
-## Phase 7 — Policy Engine
+## Phase 7 — Policy Engine — `IMPLEMENTED` (see docs/project-status.md § Phase 7 detail)
 
 **Objective:** the deterministic authorization path is real. **Scope:** action classification
 (`docs/decision-policy.md` § 6), configurable risk-band thresholds, tool authorization chain
 (`docs/architecture.md` § 6), human-escalation triggers, critical-action restrictions.
 **Deliverables:** every tool call from Phase 6 now passes through real authorization code, not
-a stub. **Dependencies:** Phases 4–6. **Tests:** every guardrail row in `docs/guardrails.md`
-§ 2 has a corresponding test; the tool-authorization chain (`docs/guardrails.md` § 3) is
-tested with both allow and deny paths for each stage. **Security:** this phase is the one
-that actually makes § 7 of `CLAUDE.md` true — treat it as the highest-scrutiny code in the
-project; review it explicitly with the `review-security` skill before considering it done.
+a stub. **Delivered as:** `src/policies/` (`action_risk.py`'s fixed classification table,
+`config.py`'s explicitly-`PROPOSED` thresholds, `authorization.py`'s tool-authorization chain,
+`gateway.py`'s DB-backed Decision/AuditEvent/HumanReview persistence for live cases) wired into
+`src/orchestration/flow.py`'s `run_case()` via the new `CaseResult.authorization` field — see
+`src/policies/README.md` and `docs/project-status.md` § Phase 7 detail for exactly what was
+built and verified, including a subtle, honestly-documented (non-bug) finding about what
+`requires_human_approval` means for the `escalate` action specifically. **Dependencies:**
+Phases 4–6. **Tests:** every guardrail row this phase introduces has a corresponding test —
+implemented (`tests/unit/test_action_risk.py`, 7 tests; `tests/unit/test_authorization.py`, 12
+tests covering both an allow and a deny path per stage of the chain) and passing.
+**Security:** tool calls from Phase 6 now pass through this real authorization code — verified
+by an actual bypass-attempt test (a permissive policy config, a proposal that itself claims no
+approval is needed), both of which still produce `requires_human_approval=True` for an
+Irreversible/Critical action, because that branch reads no configuration value at all.
 **Exit criteria:** Scenario D (critical/irreversible action) in `docs/demo-script.md` requires
 human approval regardless of a manufactured high-confidence AI recommendation, provably (a
-test that tries to bypass it and fails). **Risks:** the single highest-risk phase to get wrong
-— a bug here means an unauthorized financial action, not just a wrong answer.
+test that tries to bypass it and fails) — met
+(`tests/unit/test_authorization.py::test_irreversible_action_requires_human_approval_even_with_manufactured_high_confidence`,
+`tests/unit/test_flow.py::test_irreversible_action_requires_human_approval_end_to_end`), and
+also verified live against a real transaction (`src/policies/README.md`). **Risks:** confirmed
+as anticipated — the single highest-risk phase to get wrong; the genuine remaining gaps are
+idempotency verification (explicitly Phase 9's scope, not invented here) and no real
+authentication/session layer yet (Phase 8's job), both honestly reported rather than
+papered over with a stub that looks more complete than it is.
 
 ## Phase 8 — Security Hardening
 

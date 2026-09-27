@@ -27,7 +27,8 @@
           "customer_explanation_es": "Necesitamos confirmar un detalle contigo antes de continuar.",
           "analyst_explanation": "proposed_action=ask_question; reason=Contradictory evidence detected \u2014 one targeted question is likely to resolve it.; model=mock-rule-based-v0.1.0; evidence_summary=2 supports_fraud, 2 supports_legitimate; 4 contradiction(s) detected"
         },
-        "policy_source": "dispute_policy.md"
+        "policy_source": "dispute_policy.md",
+        "authorization": null
       },
       "for_review": {
         "expected_human_involvement": "optional \u2014 only if the clarifying question does not resolve the ambiguity",
@@ -56,7 +57,19 @@
           "customer_explanation_es": "Detectamos actividad inusual y estamos protegiendo tu cuenta mientras la revisamos.",
           "analyst_explanation": "proposed_action=protect_account; reason=Evidence supporting fraud found, no contradictions.; model=mock-rule-based-v0.1.0; evidence_summary=5 supports_fraud, 1 neutral"
         },
-        "policy_source": "card_freeze_policy.md"
+        "policy_source": "card_freeze_policy.md",
+        "authorization": {
+          "authorized": true,
+          "requires_human_approval": true,
+          "action_risk": "high",
+          "policy_version": "policy-v0.1.0-proposed",
+          "reason": "action_risk=high, automation_allowed=False, proposal.requires_human_approval=True",
+          "denied_step": null,
+          "audit_event_types": [
+            "risk.assessment.completed",
+            "human.review.required"
+          ]
+        }
       },
       "for_review": {
         "expected_human_involvement": "required for the card-freeze/high-risk action; dispute creation may proceed under policy without a human if configured to allow it",
@@ -85,7 +98,20 @@
           "customer_explanation_es": "Tu caso requiere revisi\u00f3n de un especialista antes de continuar. Te contactaremos pronto.",
           "analyst_explanation": "proposed_action=escalate; reason=1 contradiction(s) in the evidence graph \u2014 routing to a human rather than guessing.; model=mock-rule-based-v0.1.0; evidence_summary=1 supports_legitimate, 1 supports_fraud; 1 contradiction(s) detected"
         },
-        "policy_source": "escalation_procedures.md"
+        "policy_source": "escalation_procedures.md",
+        "authorization": {
+          "authorized": true,
+          "requires_human_approval": false,
+          "action_risk": "low",
+          "policy_version": "policy-v0.1.0-proposed",
+          "reason": "action_risk=low, automation_allowed=True, proposal.requires_human_approval=False",
+          "denied_step": null,
+          "audit_event_types": [
+            "risk.assessment.completed",
+            "action.approved",
+            "action.executed"
+          ]
+        }
       },
       "for_review": {
         "expected_human_involvement": "required if the clarifying question does not resolve the contradiction",
@@ -114,7 +140,20 @@
           "customer_explanation_es": "Revisamos la transacci\u00f3n y no encontramos se\u00f1ales de actividad sospechosa. No se requiere ninguna acci\u00f3n adicional de tu parte.",
           "analyst_explanation": "proposed_action=auto_resolve; reason=Evidence is consistent and supports legitimacy or is neutral.; model=mock-rule-based-v0.1.0; evidence_summary=no evidence available"
         },
-        "policy_source": "dispute_policy.md"
+        "policy_source": "dispute_policy.md",
+        "authorization": {
+          "authorized": true,
+          "requires_human_approval": false,
+          "action_risk": "low",
+          "policy_version": "policy-v0.1.0-proposed",
+          "reason": "action_risk=low, automation_allowed=True, proposal.requires_human_approval=False",
+          "denied_step": null,
+          "audit_event_types": [
+            "risk.assessment.completed",
+            "action.approved",
+            "action.executed"
+          ]
+        }
       },
       "for_review": {
         "expected_human_involvement": "likely required, since automated explanation/next-best-question generation is degraded",
@@ -143,7 +182,20 @@
           "customer_explanation_es": "Revisamos la transacci\u00f3n y no encontramos se\u00f1ales de actividad sospechosa. No se requiere ninguna acci\u00f3n adicional de tu parte.",
           "analyst_explanation": "proposed_action=auto_resolve; reason=Evidence is consistent and supports legitimacy or is neutral.; model=mock-rule-based-v0.1.0; evidence_summary=no evidence available"
         },
-        "policy_source": "dispute_policy.md"
+        "policy_source": "dispute_policy.md",
+        "authorization": {
+          "authorized": true,
+          "requires_human_approval": false,
+          "action_risk": "low",
+          "policy_version": "policy-v0.1.0-proposed",
+          "reason": "action_risk=low, automation_allowed=True, proposal.requires_human_approval=False",
+          "denied_step": null,
+          "audit_event_types": [
+            "risk.assessment.completed",
+            "action.approved",
+            "action.executed"
+          ]
+        }
       },
       "for_review": {
         "expected_human_involvement": "as required by the action's normal action-risk classification (freeze_card is High) -- unaffected by the duplication itself",
@@ -172,7 +224,19 @@
           "customer_explanation_es": "Revisamos la transacci\u00f3n y no encontramos se\u00f1ales de actividad sospechosa. No se requiere ninguna acci\u00f3n adicional de tu parte.",
           "analyst_explanation": "proposed_action=auto_resolve; reason=Evidence is consistent and supports legitimacy or is neutral.; model=mock-rule-based-v0.1.0; evidence_summary=1 supports_legitimate"
         },
-        "policy_source": "dispute_policy.md"
+        "policy_source": "dispute_policy.md",
+        "authorization": {
+          "authorized": true,
+          "requires_human_approval": true,
+          "action_risk": "irreversible",
+          "policy_version": "policy-v0.1.0-proposed",
+          "reason": "action_risk=irreversible, automation_allowed=False, proposal.requires_human_approval=False",
+          "denied_step": null,
+          "audit_event_types": [
+            "risk.assessment.completed",
+            "human.review.required"
+          ]
+        }
       },
       "for_review": {
         "expected_human_involvement": "required, unconditionally",
@@ -206,7 +270,8 @@
           "customer_explanation_es": "Necesitamos confirmar un detalle contigo antes de continuar.",
           "analyst_explanation": "proposed_action=ask_question; reason=Contradictory evidence detected \u2014 one targeted question is likely to resolve it.; model=mock-rule-based-v0.1.0; evidence_summary=1 supports_fraud, 1 supports_legitimate; 1 contradiction(s) detected"
         },
-        "policy_source": "dispute_policy.md"
+        "policy_source": "dispute_policy.md",
+        "authorization": null
       },
       "for_review": {
         "expected_human_involvement": "required",
@@ -235,7 +300,20 @@
           "customer_explanation_es": "Revisamos la transacci\u00f3n y no encontramos se\u00f1ales de actividad sospechosa. No se requiere ninguna acci\u00f3n adicional de tu parte.",
           "analyst_explanation": "proposed_action=auto_resolve; reason=Evidence is consistent and supports legitimacy or is neutral.; model=mock-rule-based-v0.1.0; evidence_summary=5 supports_legitimate"
         },
-        "policy_source": "dispute_policy.md"
+        "policy_source": "dispute_policy.md",
+        "authorization": {
+          "authorized": true,
+          "requires_human_approval": false,
+          "action_risk": "low",
+          "policy_version": "policy-v0.1.0-proposed",
+          "reason": "action_risk=low, automation_allowed=True, proposal.requires_human_approval=False",
+          "denied_step": null,
+          "audit_event_types": [
+            "risk.assessment.completed",
+            "action.approved",
+            "action.executed"
+          ]
+        }
       },
       "for_review": {
         "expected_human_involvement": "none",
@@ -264,7 +342,20 @@
           "customer_explanation_es": "Revisamos la transacci\u00f3n y no encontramos se\u00f1ales de actividad sospechosa. No se requiere ninguna acci\u00f3n adicional de tu parte.",
           "analyst_explanation": "proposed_action=auto_resolve; reason=Evidence is consistent and supports legitimacy or is neutral.; model=mock-rule-based-v0.1.0; evidence_summary=1 neutral, 1 supports_legitimate"
         },
-        "policy_source": "dispute_policy.md"
+        "policy_source": "dispute_policy.md",
+        "authorization": {
+          "authorized": true,
+          "requires_human_approval": false,
+          "action_risk": "low",
+          "policy_version": "policy-v0.1.0-proposed",
+          "reason": "action_risk=low, automation_allowed=True, proposal.requires_human_approval=False",
+          "denied_step": null,
+          "audit_event_types": [
+            "risk.assessment.completed",
+            "action.approved",
+            "action.executed"
+          ]
+        }
       },
       "for_review": {
         "expected_human_involvement": "optional, depending on whether the remaining evidence is sufficient without the missing signal",
@@ -293,7 +384,8 @@
           "customer_explanation_es": "No podemos procesar esta solicitud tal como fue planteada.",
           "analyst_explanation": "proposed_action=refuse; reason=Customer message attempted to override system instructions or claimed unearned authority \u2014 refused regardless of content, per docs/security-model.md \u00a7 2.; model=mock-rule-based-v0.1.0; evidence_summary=no evidence available"
         },
-        "policy_source": "authentication_policy.md"
+        "policy_source": "authentication_policy.md",
+        "authorization": null
       },
       "for_review": {
         "expected_human_involvement": "none required to refuse the request; a human may optionally review the flagged injection attempt",

@@ -48,3 +48,18 @@ def propose_create_human_review(case_id: str, reason: str) -> ToolProposal:
         action_risk="low",
         requires_human_approval=False,
     )
+
+
+def propose_close_case_no_action(case_id: str, rationale: str) -> ToolProposal:
+    """For `auto_resolve`: no state-changing action taken on the customer's
+    account or dispute — closing the case is itself Low action-risk
+    (docs/decision-policy.md § 6: "explain transaction, show status"), never
+    the Medium `notify_customer` classification `create_dispute`/
+    `freeze_card` carry."""
+    return ToolProposal(
+        tool_name="close_case_no_action",
+        arguments={"case_id": case_id},
+        rationale=rationale,
+        action_risk="low",
+        requires_human_approval=False,
+    )

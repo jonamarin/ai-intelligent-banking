@@ -113,13 +113,14 @@ src/                           ← application code (Phase 1+, docs/project-stat
   agents/                       ← structured LLM output schemas + LLMClient/MockLLMClient (implemented, Phase 6)
   retrieval/                    ← TF-IDF policy RAG + synthetic Spanish policy docs (implemented, Phase 6)
   tools/                        ← read tools (execute directly) + action tools (proposal-only) (implemented, Phase 6)
-  orchestration/                ← case state machine, golden/live case loaders (implemented, Phase 6)
-  policies/security/monitoring/
+  orchestration/                ← case state machine, golden/live case loaders (implemented, Phase 6-7)
+  policies/                     ← action-risk classification, config, tool-authorization chain, Decision/AuditEvent/HumanReview gateway (implemented, Phase 7)
+  security/monitoring/
                                ← package skeletons only; each documents which phase fills it in
 
 alembic/                       ← migrations (implemented, Phase 2-3) — env.py reads
                                   src.config.settings + src.models.Base.metadata
-tests/unit/                    ← 48 passing tests (10 Phase 1 + 7 Phase 2 + 3 Phase 3 + 5 Phase 4 + 13 Phase 5 + 10 Phase 6)
+tests/unit/                    ← 68 passing tests (10 Phase 1 + 7 Phase 2 + 3 Phase 3 + 5 Phase 4 + 13 Phase 5 + 10 Phase 6 + 20 Phase 7)
 data/models/                   ← trained model artifacts (git-ignored — binary)
 pyproject.toml, uv.lock, Dockerfile, docker-compose.yml, Makefile,
 .github/workflows/ci.yml, .pre-commit-config.yaml, .env.example
@@ -127,9 +128,9 @@ pyproject.toml, uv.lock, Dockerfile, docker-compose.yml, Makefile,
 ```
 
 Repository initialization, Phase 1 — Foundation, Phase 2 — Domain, Phase 3 — Ingestion
-(sample mode), Phase 4 — Fraud ML, Phase 5 — Evidence Engine, and Phase 6 — AI Agent /
-Orchestration are all done (`docs/project-status.md`). The policy engine,
-`infrastructure/terraform/`, and everything else in `docs/implementation-roadmap.md` Phases 7+
+(sample mode), Phase 4 — Fraud ML, Phase 5 — Evidence Engine, Phase 6 — AI Agent /
+Orchestration, and Phase 7 — Policy Engine are all done (`docs/project-status.md`).
+`infrastructure/terraform/` and everything else in `docs/implementation-roadmap.md` Phases 8+
 do not exist yet — do not create empty placeholder directories for a phase before it actually
 starts; the existing `src/` subpackages that are still just markers document this explicitly in
 their own docstrings. A `--full` ingestion run (the entire ~19M-row dataset, not just the
@@ -139,15 +140,19 @@ loaded sample — a real, verified finding, not a bug** (`docs/project-status.md
 detail, `src/ml/README.md`). **The Evidence Engine's `device_id` is a documented heuristic
 proxy, not a true device fingerprint** — the dataset has no persistent device identifier
 (`src/evidence/README.md`). Evidence Engine direction/confidence values are illustrative
-heuristics, never approved policy, and this module must never be wired to a tool that executes
-an action (`docs/decision-policy.md` § 5). **Phase 6's orchestrator produces proposals only —
-`src/orchestration/flow.py` does not import `src/tools/action_tools.py` at all**, and its only
-legitimate offline escalation signal is evidence-graph contradiction; scenarios needing
-escalation for other reasons (amount thresholds, an action's inherent risk classification) are
-an honestly-reported gap Phase 7 (Policy Engine) is scoped to close, not a defect in Phase 6
-(`src/orchestration/README.md`). `call_transcripts` currently has **0 rows** in the live
-database (verified during Phase 6) despite earlier documentation claiming a 3-day sample —
-see `docs/project-status.md` § Known limitations before relying on it.
+heuristics, never approved policy. **Phase 7's Policy Engine (`src/policies/`) now makes every
+tool call from Phase 6 pass through a real, deterministic authorization chain** — action-risk
+is classified from fixed code + the case's own transaction facts, never from the LLM;
+Irreversible/Critical actions require human approval unconditionally, with a test that tries to
+bypass this and fails (`docs/demo-script.md` Scenario D, `src/policies/README.md`). **Genuine
+remaining gaps, honestly reported, not papered over:** idempotency-key verification does not
+exist yet (`evaluation/golden_cases/duplicate_action.json` — explicitly Phase 9's scope); no
+real authentication/session layer exists (`is_authenticated` defaults `True` everywhere —
+Phase 8's job); risk-band fraud-probability thresholds (`docs/decision-policy.md` § 5) are not
+wired in because Phase 4's model score was never plumbed into orchestration. `call_transcripts`
+currently has **0 rows** in the live database (verified during Phase 6) despite earlier
+documentation claiming a 3-day sample — see `docs/project-status.md` § Known limitations
+before relying on it.
 
 ## 5. Confirmed technology stack (planned, not yet implemented)
 
@@ -255,8 +260,13 @@ DATABASE_URL="postgresql+psycopg://banking:banking@localhost:5433/banking_ai" uv
 # fully offline, no DATABASE_URL, no API key:
 uv run python -m src.orchestration.run_golden_cases
 
-# Orchestration against a real transaction — same DATABASE_URL override, needs Phase 3-5 data:
-DATABASE_URL="postgresql+psycopg://banking:banking@localhost:5433/banking_ai" uv run python -m src.orchestration.live_case --pick-fraud
+# Orchestration against a real transaction — same DATABASE_URL override, needs Phase 3-5 data.
+# --persist also writes a real Decision/AuditEvent row (Phase 7, src/policies/gateway.py):
+DATABASE_URL="postgresql+psycopg://banking:banking@localhost:5433/banking_ai" uv run python -m src.orchestration.live_case --pick-fraud --persist
+
+# Policy Engine (docs/project-status.md § Phase 7 detail; src/policies/README.md) — fully
+# offline, no DATABASE_URL, no API key:
+uv run pytest tests/unit/test_action_risk.py tests/unit/test_authorization.py -q
 ```
 
 `Makefile` mirrors these as `make install|lint|typecheck|test|docker-up|docker-down`, but
