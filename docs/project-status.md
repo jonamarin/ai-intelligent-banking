@@ -4,17 +4,16 @@ Owns: verified current implementation state. This document must never represent 
 functionality as implemented. Update it whenever a meaningful implementation phase
 (`docs/implementation-roadmap.md`) completes, changes, or blocks.
 
-**Last meaningful update:** 2026-09-27 (Phase 10 — UI implemented and verified).
+**Last meaningful update:** 2026-09-27 (Phase 11 — Evaluation implemented and verified).
 **Last validation:** 2026-09-27 — actually run, not just inspected: `uv run ruff check .`
-(clean), `uv run mypy src` (clean, 74 files), `uv run pytest` (129/129 passed), and a full
-golden-path walkthrough in a real Chrome browser (create case -> evidence graph with two real
-contradictions -> dual explanation -> approve -> status updates), plus role-gating (customer
-403s on the review queue and review endpoint) and idempotent duplicate-review handling verified
-live via curl against the real API and database (§ Phase 10 detail below).
+(clean), `uv run mypy src evaluation` (clean, 81 files), `uv run pytest` (149/149 passed), and
+a full live evaluation run against the real database (152-case common held-out sample, all four
+`docs/evaluation-plan.md` § 10 approaches measured, fairness by country, `data/reports/
+evaluation_report.json` committed) (§ Phase 11 detail below).
 
 ## Current phase
 
-Phase 10 (UI) complete. This repository now contains: the original master prompt
+Phase 11 (Evaluation) complete. This repository now contains: the original master prompt
 (`prompt.md`), the competition brief (`project_presentation.txt`), the LATAM Bank dataset
 documentation (two PDFs at the repository root), the raw LATAM Bank dataset itself
 (`data/raw/`, git-ignored, ~5.0 GB — `docs/data-lineage.md` § 1), the Claude Code operating
@@ -24,15 +23,19 @@ ingestion pipeline (Phase 3), a trained, evaluated fraud model with a documented
 finding (Phase 4), a working Evidence Engine that has built and persisted real evidence graphs
 (Phase 5), a working case orchestration state machine (Phase 6), a real deterministic
 authorization path (Phase 7), a centralized PII/secret redaction layer and red-team test suite
-(Phase 8), real reliability handling for LLM/DB/RAG failure and idempotency (Phase 9), and now
-a real JSON API (`docs/api-contracts.md` § 1 — previously only `/health` existed) plus a
-server-rendered customer/analyst UI on top of it — the first live, HTTP-reachable consumer of
-everything Phases 6-9 built. See `src/api/README.md`.
-**Irreversible/Critical actions still require human approval unconditionally, provably, even
-when the LLM is unavailable** — verified directly: a degraded case proposing a $100,000 transfer
-still produces `requires_human_approval=True` through the full fallback path
-(`docs/demo-script.md` Scenario D + Scenario E, together), and this now holds through the real
-HTTP/UI path too, not just the CLI scripts.
+(Phase 8), real reliability handling for LLM/DB/RAG failure and idempotency (Phase 9), a real
+JSON API plus server-rendered customer/analyst UI (Phase 10), and now `python -m evaluation.run`
+(`docs/evaluation-plan.md` § 9) — a real system-level evaluation comparing Rules-only,
+Fraud-ML-only, LLM-only, and the Hybrid pipeline on one common held-out sample, plus fairness,
+LLM/agent, reliability, and business metrics (the last honestly `"not available"`, never
+fabricated). See `evaluation/README.md`.
+**A real, non-obvious finding from actually running the comparison**: "LLM only" and "Hybrid"
+produce identical flagged outcomes on the sample — the Policy Engine never changes *which*
+action gets proposed, only *whether human approval is independently required*. Its actual
+measured effect (19/152 cases, 12.5%, where the LLM alone would not have required human
+approval but the Policy Engine did) is a separate metric,
+`policy_engine_override_rate` — invisible in the headline precision/recall numbers, which is
+exactly why this project reports it as its own line rather than only the aggregate comparison.
 
 ## Status by roadmap phase (`docs/implementation-roadmap.md`)
 
@@ -48,7 +51,7 @@ HTTP/UI path too, not just the CLI scripts.
 | 8 — Security Hardening | IMPLEMENTED — see § Phase 8 detail below (0/17 unsafe actions in a measured, sample-size-stated adversarial suite; found and fixed a real injection-detection gap; several red-team cases honestly reported as not yet coverable, not silently claimed) |
 | 9 — Reliability | IMPLEMENTED — see § Phase 9 detail below (LLM fallback, DB timeout, RAG-failure degradation, and idempotency all verified — the idempotency round trip against a real database, the rest via `tests/reliability/`) |
 | 10 — UI | IMPLEMENTED — see § Phase 10 detail below (Scenarios A/B/D drivable live in a real browser, verified; Scenario C honestly reported as not yet reachable live — a pre-existing Phase 6 gap this phase's testing surfaced) |
-| 11 — Evaluation | NOT_IMPLEMENTED |
+| 11 — Evaluation | IMPLEMENTED — see § Phase 11 detail below (all four `docs/evaluation-plan.md` § 10 approaches measured on one live, 152-case common held-out sample; business metrics honestly "not available," not fabricated) |
 | 12 — Demo | NOT_IMPLEMENTED |
 | 13 — Observability | NOT_IMPLEMENTED |
 | 14 — Deployment Readiness (docs) | PARTIALLY_IMPLEMENTED — `docs/architecture.md`, `docs/security-model.md`, and this document lay out what deployment readiness requires; no actual readiness checklist has been executed because nothing is deployed |
@@ -70,7 +73,7 @@ HTTP/UI path too, not just the CLI scripts.
 - **Phase 1 — Foundation**, **Phase 2 — Domain**, **Phase 3 — Ingestion**,
   **Phase 4 — Fraud ML**, **Phase 5 — Evidence Engine**, **Phase 6 — AI Agent /
   Orchestration**, **Phase 7 — Policy Engine**, **Phase 8 — Security Hardening**,
-  **Phase 9 — Reliability**, and **Phase 10 — UI**, detailed below.
+  **Phase 9 — Reliability**, **Phase 10 — UI**, and **Phase 11 — Evaluation**, detailed below.
 
 ### Phase 1 detail
 
@@ -653,6 +656,68 @@ every table, same as the Phase 3 verification methodology. Date range: 2026-03-2
   (`POST /cases/{id}/messages` — not built; `customer_message` still comes from whatever
   `call_transcripts` row already exists, not real-time typing); rate limiting (still `PLANNED`).
   Full detail: `src/api/README.md`.
+
+### Phase 11 detail
+
+- `evaluation/sample.py`: builds the **one** held-out sample every approach is compared
+  against (`docs/evaluation-plan.md` § 10: "same held-out workload") — drawn from Phase 4's own
+  temporal test split (2026-06-03 to 2026-06-18), restricted to the `digital_events` window
+  (2026-06-11 to 2026-06-18) so device-history evidence isn't trivially `Unknown`, and
+  deliberately oversampling the rare fraud class (every in-window fraud transaction + a random
+  legit sample) — stated explicitly as not natural prevalence, given ~0.09% real fraud rate.
+- `evaluation/baselines.py`: the four required approaches. **Rules only** — a fixed threshold
+  stack over the same engineered features the ML model trains on, no fitting. **Fraud ML
+  only** — the trained XGBoost model (Phase 4 artifact), no evidence/policy/human. **LLM
+  only** — `MockLLMClient` called directly, bypassing the Policy Engine entirely (deliberately
+  unsafe in the way the hybrid design exists to avoid — measuring it is the point).
+  **Hybrid** — the actual `run_case()` + Policy Engine pipeline (Phases 6-9).
+- `evaluation/fairness.py`: Hybrid outcome rates (automation/escalation/FPR/FNR) by country and
+  segment, with a stated minimum subgroup size below which a subgroup is reported as
+  `"insufficient sample size"` rather than a meaningless point estimate
+  (`docs/model-evaluation.md` § 13).
+- **"Hybrid" is honestly labeled as incomplete, everywhere it's reported**: the Fraud ML
+  model's score is not wired into orchestration (a pre-existing gap since Phase 4 —
+  `docs/project-status.md` § Phase 4/6/7/9 detail) — this measures Evidence Engine + Policy
+  Engine + mock LLM + Human, not the full architecture `docs/model-evaluation.md` § 12
+  describes, and every mention of the row says so rather than a single caveat buried at the end.
+- **A real, non-obvious finding, only visible by actually running the comparison**: "LLM only"
+  and "Hybrid" produced **identical** precision/recall and flagged sets on the live sample. Not
+  a bug — the Policy Engine never changes *which* action gets proposed, only *whether human
+  approval is independently required*, so a metric built only on "was any protective action
+  proposed" can't see its effect at all. Added a dedicated `policy_engine_override_rate` metric
+  to make the Policy Engine's actual contribution visible: the share of cases where the mock
+  LLM's own recommendation needed no human approval, but the Policy Engine's fact-derived,
+  independent classification forced it anyway. **Measured result: 19/152 (12.5%)** — found in
+  real data, not manufactured, and regression-tested directly
+  (`tests/unit/test_evaluation.py::test_hybrid_outcome_forces_human_approval_llm_alone_would_not_require`).
+- **Business metrics reported as `"not available"`, not fabricated**: no business-approved cost
+  coefficients exist for the Expected Loss formula (`docs/evaluation-plan.md` § 3) — each
+  approach's `automation_rate` (share resolved without a human) is reported instead, as an
+  explicitly unpriced structural proxy, never a dollar figure.
+- **Verified live, end-to-end, against the real database** (152-case sample: 32 fraud + 120
+  legit): 1_rules_only precision=0.255/recall=0.375/f1=0.304; 2_fraud_ml_only
+  precision=0.230/recall=0.531/f1=0.321; 3_llm_only and 4_hybrid both
+  precision=0.195/recall=0.250/f1=0.219 (identical, as explained above);
+  `policy_engine_override_rate`=19/152; `groundedness_rate`=41/41 (every flagged decision cited
+  a real policy source); fairness by country computed for all three countries present
+  (Argentina n=26, Colombia n=42, México n=84), each clearing the minimum subgroup size.
+  `data/reports/evaluation_report.json` committed (small aggregate stats, no raw customer data,
+  same policy as every prior phase's `data/reports/*.json`).
+- 20 new tests (`tests/unit/test_evaluation.py`) — the four baseline decision functions,
+  fairness aggregation, the binary-metrics helper (including an empty-sample edge case a first
+  version of the code didn't handle — found by the test, fixed before being reported working),
+  and two fail-loudly tests (a missing model artifact, a missing Phase 4 report — both must
+  raise/report clearly, never silently produce a fabricated result). 149 unit/security/
+  reliability/evaluation tests total (10 Phase 1 + 7 Phase 2 + 3 Phase 3 + 5 Phase 4 + 13 Phase
+  5 + 10 Phase 6 + 20 Phase 7 + 20 Phase 8 + 23 Phase 9 + 18 Phase 10 + 20 Phase 11), all
+  passing.
+- **Not done in this phase, by design or as an honestly-reported gap:** full-dataset evaluation
+  (still the bounded recent-date sample every prior phase used); a judge-LLM rubric for
+  explanation quality (`docs/evaluation-plan.md` § 12 — no rubric exists to validate one
+  against, so none was built); drift monitoring / regression-on-every-change automation
+  (`docs/model-evaluation.md` § 9-10, still `PLANNED`); a statistically powered fairness
+  claim — 152 cases across 3 countries supports a directional read, not a significance test.
+  Full detail: `evaluation/README.md`.
 
 ## In progress
 

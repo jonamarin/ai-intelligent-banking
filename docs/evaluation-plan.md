@@ -87,11 +87,14 @@ synthetic-data artifacts). Never claim fairness without evidence — `docs/model
 python -m evaluation.run
 ```
 
-`PLANNED` — does not exist yet. Once implemented (Phase 11, `docs/implementation-roadmap.md`),
-it must generate fraud metrics, business metrics, fairness metrics, LLM metrics, robustness
-metrics, and scenario results from `evaluation/golden_cases/`, and must never fabricate
-results if a dependency (e.g., no trained model yet) makes a metric unavailable — print
-`not available` for that metric instead.
+**`IMPLEMENTED` (Phase 11, `evaluation/run.py` — see `evaluation/README.md` for the full,
+verified result).** Generates fraud metrics (reusing Phase 4's own measured numbers), business
+metrics (`"not available"` — no approved cost coefficients exist, never fabricated), LLM/agent
+metrics (groundedness rate, tool-authorization pass rate, and a citation of Phase 8's measured
+prompt-injection-resistance result), fairness metrics by country/segment, a citation of Phase
+9's measured reliability-suite result, and the § 10 four-way baseline comparison on one common
+held-out sample. Scenario results from `evaluation/golden_cases/` are `run_golden_cases.py`'s
+job (Phase 6/9) — not duplicated here.
 
 ## 10. Comparison against baselines
 

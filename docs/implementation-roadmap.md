@@ -258,18 +258,29 @@ evidence-graph view over polish, per this phase's own risk note; a genuine persi
 found and fixed along the way (`decisions.customer_explanation_es` didn't exist before this
 phase — see `src/api/README.md`).
 
-## Phase 11 — Evaluation
+## Phase 11 — Evaluation — `IMPLEMENTED` (see docs/project-status.md § Phase 11 detail)
 
 **Objective:** `python -m evaluation.run` produces real, non-fabricated numbers.
 **Scope:** model benchmark, business benchmark, LLM evaluation, fairness evaluation, red-team
 evaluation, reliability tests, baseline comparison (`docs/evaluation-plan.md` § 10).
 **Deliverables:** a full evaluation report per `docs/evaluation-plan.md`, all numbers labeled
-`MEASURED`/`SIMULATED`/`PROJECTED` per its § 1 rule. **Dependencies:** Phases 4–9.
-**Tests:** the evaluation run itself, plus a test that it fails loudly (not silently) when a
-required input is missing. **Security:** none beyond not leaking PII into the report.
-**Exit criteria:** the baseline-vs-hybrid comparison (`docs/evaluation-plan.md` § 10) has real
-numbers for all four approaches. **Risks:** temptation to round up or omit unfavorable
-numbers — don't; `docs/evaluation-plan.md` § 1 requires honest labeling including failures.
+`MEASURED`/`SIMULATED`/`PROJECTED` per its § 1 rule. **Delivered as:** `evaluation/sample.py`
+(the one common held-out sample — every in-window fraud transaction + a random legit sample,
+an intentional, stated oversample), `baselines.py` (Rules only, Fraud ML only, LLM only,
+Hybrid), `fairness.py`, `report.py`/`run.py` — see `evaluation/README.md` for the full,
+live-verified result including a real, non-obvious finding (LLM-only and Hybrid produce
+identical flagged sets on this sample by construction; the Policy Engine's actual, measured
+effect — 19/152 cases, 12.5% — only shows up in a separate `policy_engine_override_rate`
+metric). **Dependencies:** Phases 4–9. **Tests:** `tests/unit/test_evaluation.py` (20 tests,
+offline) — the baseline decision functions, fairness aggregation, and binary-metrics helper,
+including a fail-loudly test for a missing model artifact and a missing Phase 4 report (both
+report `"not available"` with a reason, never fabricate). **Security:** none beyond not leaking
+PII into the report — met; the report contains transaction/customer IDs and aggregate rates
+only. **Exit criteria:** the baseline-vs-hybrid comparison has real numbers for all four
+approaches, run live against the database — met (`data/reports/evaluation_report.json`).
+**Risks:** confirmed and reported, not hidden — "Hybrid" here excludes the Fraud ML score (a
+pre-existing gap since Phase 4), and this report says so at every place the row is mentioned,
+not just once in a caveats list.
 
 ## Phase 12 — Demo
 

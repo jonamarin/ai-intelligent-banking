@@ -1,0 +1,363 @@
+{
+  "run_started_at": "2026-09-27T18:51:15.960400+00:00",
+  "fraud_ml_metrics": {
+    "status": "MEASURED",
+    "source": "data/reports/fraud_model_evaluation.json",
+    "split": {
+      "train": {
+        "start": "2026-03-20",
+        "end": "2026-05-19"
+      },
+      "val": {
+        "start": "2026-05-19",
+        "end": "2026-06-03"
+      },
+      "test": {
+        "start": "2026-06-03",
+        "end": "2026-06-18"
+      },
+      "counts": {
+        "train": 248097,
+        "val": 64963,
+        "test": 57938
+      },
+      "positive_counts": {
+        "train": 223,
+        "val": 53,
+        "test": 59
+      }
+    },
+    "baseline_logistic_regression_test_MEASURED": {
+      "sample_size": 57938,
+      "positive_count": 59,
+      "threshold": 0.5,
+      "precision": 0.0009734853336749071,
+      "recall": 0.6440677966101694,
+      "f1": 0.0019440323323272114,
+      "roc_auc": 0.46163899496934135,
+      "pr_auc": 0.0009134916675194588,
+      "false_positive_rate": 0.6737676877624009,
+      "false_negative_rate": 0.3559322033898305,
+      "confusion_matrix": [
+        [
+          18882,
+          38997
+        ],
+        [
+          21,
+          38
+        ]
+      ],
+      "calibration_bins": [
+        {
+          "predicted": 0.4343433540940577,
+          "observed": 0.0012081463583016915
+        },
+        {
+          "predicted": 0.47180990049297283,
+          "observed": 0.00017259233690024162
+        },
+        {
+          "predicted": 0.489473932502695,
+          "observed": 0.0018985157059026579
+        },
+        {
+          "predicted": 0.502901072058209,
+          "observed": 0.0015535991714137752
+        },
+        {
+          "predicted": 0.515053064686261,
+          "observed": 0.0010355540214014498
+        },
+        {
+          "predicted": 0.5271835882146597,
+          "observed": 0.0010355540214014498
+        },
+        {
+          "predicted": 0.5394467630970564,
+          "observed": 0.0008631106507854307
+        },
+        {
+          "predicted": 0.5537314650171133,
+          "observed": 0.0006903693476009665
+        },
+        {
+          "predicted": 0.5726360335807603,
+          "observed": 0.0010355540214014498
+        },
+        {
+          "predicted": 0.6133862552281567,
+          "observed": 0.0006903693476009665
+        }
+      ]
+    },
+    "xgboost_test_MEASURED": {
+      "sample_size": 57938,
+      "positive_count": 59,
+      "threshold": 0.5,
+      "precision": 0.0009715655159012889,
+      "recall": 0.5084745762711864,
+      "f1": 0.0019394252836409478,
+      "roc_auc": 0.501598015263286,
+      "pr_auc": 0.0010264595691893185,
+      "false_positive_rate": 0.532973962922649,
+      "false_negative_rate": 0.4915254237288136,
+      "confusion_matrix": [
+        [
+          27031,
+          30848
+        ],
+        [
+          29,
+          30
+        ]
+      ],
+      "calibration_bins": [
+        {
+          "predicted": 0.43878302557643606,
+          "observed": 0.0010325245224574084
+        },
+        {
+          "predicted": 0.46862866854961055,
+          "observed": 0.0008095854922279792
+        },
+        {
+          "predicted": 0.478854886485001,
+          "observed": 0.0012806146950536258
+        },
+        {
+          "predicted": 0.4877225951298213,
+          "observed": 0.0009565716472163765
+        },
+        {
+          "predicted": 0.4983694682097494,
+          "observed": 0.0011637572734829592
+        },
+        {
+          "predicted": 0.5040033408155582,
+          "observed": 0.0006460991762235503
+        },
+        {
+          "predicted": 0.5051329135894775,
+          "observed": 0.0011266485519252436
+        },
+        {
+          "predicted": 0.5099528790916565,
+          "observed": 0.0014641288433382138
+        },
+        {
+          "predicted": 0.5237246153365405,
+          "observed": 0.0005309264666843643
+        }
+      ]
+    },
+    "caveats": [
+      "Trained on a bounded recent-date sample (docs/project-status.md \u00a7 Phase 3 detail), not the full ~19M-row dataset \u2014 do not generalize these numbers beyond this sample.",
+      "is_fraud is a SYNTHETIC dataset-generated label (docs/data-lineage.md \u00a7 5), not a real bank's ground truth.",
+      "Class imbalance is severe (see split.positive_counts above) \u2014 small absolute counts of positives in val/test make these metrics high-variance; treat point estimates cautiously, especially at the test-set scale.",
+      "Both models perform near chance (ROC-AUC ~0.46-0.50) on this sample. The dataset's own (excluded, diagnostic-only) fraud_score field DOES separate the classes clearly (see diagnostic_fraud_score_separation_by_is_fraud above) \u2014 so a real underlying signal exists in the generator's process, but it is not exposed through the transactional/behavioral columns this phase loaded. Leading hypothesis: the signal lives in device/session/IP data (digital_events -> Device derivation, Phase 5), which this ingestion run deliberately skipped for memory reasons (src/ingestion/README.md). This is reported as a real finding, not tuned away \u2014 see docs/implementation-roadmap.md Phase 4's own anticipated risk."
+    ]
+  },
+  "business_metrics": {
+    "status": "not available",
+    "reason": "No business-approved cost coefficients exist for the Expected Loss formula (docs/evaluation-plan.md \u00a7 3: Fraud Loss + False Positive Cost + Customer Friction Cost + Human Agent Cost + AI/Infrastructure Cost) \u2014 fabricating dollar figures would violate CLAUDE.md \u00a7 7. Structural proxies computed instead, below.",
+    "structural_proxies_MEASURED": "see baseline_comparison's per-approach 'automation_rate' (share of cases resolved without a human) as an unpriced stand-in for 'human agent cost avoided' \u2014 not a dollar figure"
+  },
+  "baseline_comparison": {
+    "status": "MEASURED",
+    "sample": {
+      "sample_size": 152,
+      "fraud_count": 32,
+      "legit_count": 120,
+      "window": {
+        "start": "2026-06-11",
+        "end": "2026-06-18"
+      },
+      "note": "Every in-window fraud transaction plus a random sample of legitimate ones \u2014 an intentional oversample of the rare positive class for evaluation, not the dataset's natural ~0.09% prevalence (docs/evaluation-plan.md \u00a7 1)."
+    },
+    "1_rules_only": {
+      "sample_size": 152,
+      "positive_count": 32,
+      "precision": 0.2553191489361702,
+      "recall": 0.375,
+      "f1": 0.3037974683544304,
+      "false_positive_rate": 0.2916666666666667,
+      "false_negative_rate": 0.625,
+      "confusion_matrix": [
+        [
+          85,
+          35
+        ],
+        [
+          20,
+          12
+        ]
+      ],
+      "automation_rate": 0.6907894736842105
+    },
+    "3_llm_only_SIMULATED_mock_mode": {
+      "sample_size": 152,
+      "positive_count": 32,
+      "precision": 0.1951219512195122,
+      "recall": 0.25,
+      "f1": 0.2191780821917808,
+      "false_positive_rate": 0.275,
+      "false_negative_rate": 0.75,
+      "confusion_matrix": [
+        [
+          87,
+          33
+        ],
+        [
+          24,
+          8
+        ]
+      ],
+      "automation_rate": 0.7302631578947368
+    },
+    "4_hybrid_current_implementation": {
+      "sample_size": 152,
+      "positive_count": 32,
+      "precision": 0.1951219512195122,
+      "recall": 0.25,
+      "f1": 0.2191780821917808,
+      "false_positive_rate": 0.275,
+      "false_negative_rate": 0.75,
+      "confusion_matrix": [
+        [
+          87,
+          33
+        ],
+        [
+          24,
+          8
+        ]
+      ],
+      "automation_rate": 0.7302631578947368
+    },
+    "policy_engine_override_rate": {
+      "value": 0.125,
+      "numerator": 19,
+      "denominator": 152,
+      "definition": "share of cases where the mock LLM's own recommendation needed no human approval, but the Policy Engine's independent, fact-derived action-risk classification required it anyway (docs/decision-policy.md \u00a7 2, Scenario D) \u2014 the actual value the Policy Engine adds over 'LLM only', not visible in the flagged/precision/recall numbers above because those only track WHICH action was proposed, and the Policy Engine never changes that, only who may authorize it."
+    },
+    "2_fraud_ml_only": {
+      "sample_size": 152,
+      "positive_count": 32,
+      "precision": 0.22972972972972974,
+      "recall": 0.53125,
+      "f1": 0.32075471698113206,
+      "false_positive_rate": 0.475,
+      "false_negative_rate": 0.46875,
+      "confusion_matrix": [
+        [
+          63,
+          57
+        ],
+        [
+          15,
+          17
+        ]
+      ],
+      "automation_rate": 0.513157894736842
+    },
+    "note": "'4_hybrid_current_implementation' is Evidence Engine + Policy Engine + mock LLM + Human \u2014 the Fraud ML model's score is NOT wired into orchestration (a pre-existing, already-documented gap, docs/project-status.md \u00a7 Phase 4/6/7/9 detail), so this is not yet the full 'Rules + ML + LLM + Evidence + Human' hybrid docs/model-evaluation.md \u00a7 12 describes. '3_llm_only' calls MockLLMClient directly, bypassing the Policy Engine entirely \u2014 deliberately unsafe in the way the hybrid design exists to avoid; measuring it is the point. Its precision/recall/flagged-set are identical to the Hybrid row on this sample BY CONSTRUCTION \u2014 the Policy Engine never changes WHICH action gets proposed, only whether human approval is independently required (see 'policy_engine_override_rate' for the metric that actually shows the Policy Engine's effect)."
+  },
+  "llm_agent_metrics": {
+    "status": "MEASURED, mock LLM mode (LLM_MODE=mock \u2014 no real provider exists in this project, docs/agents/llm_client.py) \u2014 not a measurement of real-LLM quality",
+    "groundedness_rate": {
+      "value": 1.0,
+      "numerator": 41,
+      "denominator": 41,
+      "definition": "share of flagged (protect_account/escalate/create_dispute/refuse) decisions whose explanation cites a real policy_source (src/retrieval/policy_rag.py)"
+    },
+    "tool_authorization_pass_rate": {
+      "value": 1.0,
+      "numerator": 152,
+      "denominator": 152,
+      "definition": "share of proposed tool calls the Policy Engine authorized (not hard-denied) \u2014 expected near 1.0 for this sample of fresh, open cases; a lower number would indicate a real authorization-chain problem"
+    },
+    "prompt_injection_resistance": {
+      "value_MEASURED": "0/17 unsafe actions",
+      "source": "tests/security/test_red_team.py::test_adversarial_suite_unsafe_action_rate_is_zero (Phase 8) \u2014 cited here, not re-derived; re-run `uv run pytest tests/security/ -q -s` to refresh"
+    }
+  },
+  "reliability_metrics": {
+    "status": "MEASURED (pass/fail test suite, not a sampled rate)",
+    "source": "tests/reliability/ (Phase 9) \u2014 23 tests: LLM fallback (Scenario E), bounded DB-connect timeout (verified against a genuinely unreachable address), RAG-failure degradation, idempotency-key derivation",
+    "command": "uv run pytest tests/reliability/ -q",
+    "result_at_last_full_suite_run": "23/23 passed (docs/project-status.md \u00a7 Phase 9 detail)"
+  },
+  "fairness_by_country": {
+    "Argentina": {
+      "sample_size": 26,
+      "fraud_count": 2,
+      "automation_rate": 0.7692307692307693,
+      "escalation_rate": 0.23076923076923078,
+      "false_positive_rate": 0.25,
+      "false_negative_rate": 1.0,
+      "note": "MEASURED, n=26 (small-sample point estimate \u2014 see docs/model-evaluation.md \u00a7 13)"
+    },
+    "Colombia": {
+      "sample_size": 42,
+      "fraud_count": 8,
+      "automation_rate": 0.6666666666666666,
+      "escalation_rate": 0.3333333333333333,
+      "false_positive_rate": 0.29411764705882354,
+      "false_negative_rate": 0.5,
+      "note": "MEASURED, n=42 (small-sample point estimate \u2014 see docs/model-evaluation.md \u00a7 13)"
+    },
+    "M\u00e9xico": {
+      "sample_size": 84,
+      "fraud_count": 22,
+      "automation_rate": 0.75,
+      "escalation_rate": 0.25,
+      "false_positive_rate": 0.27419354838709675,
+      "false_negative_rate": 0.8181818181818182,
+      "note": "MEASURED, n=84 (small-sample point estimate \u2014 see docs/model-evaluation.md \u00a7 13)"
+    }
+  },
+  "fairness_by_segment": {
+    "Basic": {
+      "sample_size": 88,
+      "fraud_count": 19,
+      "automation_rate": 0.7045454545454546,
+      "escalation_rate": 0.29545454545454547,
+      "false_positive_rate": 0.30434782608695654,
+      "false_negative_rate": 0.7368421052631579,
+      "note": "MEASURED, n=88 (small-sample point estimate \u2014 see docs/model-evaluation.md \u00a7 13)"
+    },
+    "Plus": {
+      "sample_size": 40,
+      "fraud_count": 8,
+      "automation_rate": 0.8,
+      "escalation_rate": 0.2,
+      "false_positive_rate": 0.15625,
+      "false_negative_rate": 0.625,
+      "note": "MEASURED, n=40 (small-sample point estimate \u2014 see docs/model-evaluation.md \u00a7 13)"
+    },
+    "Premium": {
+      "sample_size": 15,
+      "fraud_count": 4,
+      "automation_rate": 0.8,
+      "escalation_rate": 0.2,
+      "false_positive_rate": 0.2727272727272727,
+      "false_negative_rate": 1.0,
+      "note": "MEASURED, n=15 (small-sample point estimate \u2014 see docs/model-evaluation.md \u00a7 13)"
+    },
+    "Student": {
+      "sample_size": 9,
+      "fraud_count": 1,
+      "automation_rate": 0.5555555555555556,
+      "escalation_rate": 0.4444444444444444,
+      "false_positive_rate": 0.5,
+      "false_negative_rate": 1.0,
+      "note": "MEASURED, n=9 (small-sample point estimate \u2014 see docs/model-evaluation.md \u00a7 13)"
+    }
+  },
+  "caveats": [
+    "All fairness/baseline-comparison numbers come from one small, deliberately fraud-oversampled held-out window (see baseline_comparison.sample) \u2014 not representative of natural class prevalence, and too small for anything beyond a directional read at the subgroup level (docs/model-evaluation.md \u00a7 13).",
+    "is_fraud is a SYNTHETIC dataset-generated label (docs/data-lineage.md \u00a7 5), not a real bank's ground truth.",
+    "'LLM' throughout this report means MockLLMClient (LLM_MODE=mock) \u2014 no real provider exists in this project; these are not measurements of real-LLM behavior."
+  ]
+}

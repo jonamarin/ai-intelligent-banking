@@ -88,7 +88,11 @@ def _authorize_action(
     )
 
 
-def _summarize_evidence(case: CaseInput) -> str:
+def summarize_evidence(case: CaseInput) -> str:
+    """Public (not `_`-prefixed): reused by `evaluation/baselines.py`'s
+    "LLM only" baseline (Phase 11, docs/evaluation-plan.md § 10), which
+    calls `MockLLMClient` directly with the same evidence summary this
+    pipeline itself would compute — single source of truth, not a copy."""
     counts: dict[str, int] = {}
     for item in case.evidence_items:
         counts[item.direction.value] = counts.get(item.direction.value, 0) + 1
@@ -111,7 +115,7 @@ def _refusal(
         "unearned authority — refused regardless of content, per docs/security-model.md § 2.",
         requires_human_approval=False,
     )
-    explanation = llm_client.explain(_summarize_evidence(case), action)
+    explanation = llm_client.explain(summarize_evidence(case), action)
     return CaseResult(
         case_id=case.case_id,
         intent=intent,
@@ -177,7 +181,7 @@ def run_case(
     if intent.injection_attempt_detected:
         return _refusal(case, intent, llm_client, rag)
 
-    evidence_summary = _summarize_evidence(case)
+    evidence_summary = summarize_evidence(case)
 
     try:
         next_question = call_with_retry(

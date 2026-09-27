@@ -100,8 +100,10 @@ docs/
   demo-script.md               ← deterministic demo scenarios
   decisions/                   ← ADRs
 
-evaluation/
+evaluation/                    ← system-level evaluation (implemented, Phase 11) — `python -m evaluation.run`
   golden_cases/                ← synthetic scenario fixtures + schema
+  sample.py, baselines.py, fairness.py, report.py, run.py
+                               ← Rules/ML/LLM/Hybrid baseline comparison, fairness, full report
 
 src/                           ← application code (Phase 1+, docs/project-status.md)
   config/                      ← settings + structured logging (implemented)
@@ -121,7 +123,7 @@ src/                           ← application code (Phase 1+, docs/project-stat
 
 alembic/                       ← migrations (implemented, Phase 2-3, 9) — env.py reads
                                   src.config.settings + src.models.Base.metadata
-tests/unit/                    ← 82 passing tests (10 Phase 1 + 7 Phase 2 + 3 Phase 3 + 5 Phase 4 + 13 Phase 5 + 10 Phase 6 + 20 Phase 7 − 4 superseded, moved to tests/security/, + 18 Phase 10 API tests)
+tests/unit/                    ← 102 passing tests (10 Phase 1 + 7 Phase 2 + 3 Phase 3 + 5 Phase 4 + 13 Phase 5 + 10 Phase 6 + 20 Phase 7 − 4 superseded, moved to tests/security/, + 18 Phase 10 API tests + 20 Phase 11 evaluation tests)
 tests/security/                ← 24 passing tests (Phase 8: redaction + red-team/adversarial suite)
 tests/reliability/             ← 23 passing tests (Phase 9: retry/fallback, idempotency, DB-timeout)
 data/models/                   ← trained model artifacts (git-ignored — binary)
@@ -132,11 +134,11 @@ pyproject.toml, uv.lock, Dockerfile, docker-compose.yml, Makefile,
 
 Repository initialization, Phase 1 — Foundation, Phase 2 — Domain, Phase 3 — Ingestion
 (sample mode), Phase 4 — Fraud ML, Phase 5 — Evidence Engine, Phase 6 — AI Agent /
-Orchestration, Phase 7 — Policy Engine, Phase 8 — Security Hardening, Phase 9 — Reliability, and
-Phase 10 — UI are all done (`docs/project-status.md`). `infrastructure/terraform/` and
-everything else in `docs/implementation-roadmap.md` Phases 11+ do not exist yet — do not create
-empty placeholder directories for a phase before it actually starts; the existing `src/`
-subpackages that are still just markers document this explicitly in
+Orchestration, Phase 7 — Policy Engine, Phase 8 — Security Hardening, Phase 9 — Reliability,
+Phase 10 — UI, and Phase 11 — Evaluation are all done (`docs/project-status.md`).
+`infrastructure/terraform/` and everything else in `docs/implementation-roadmap.md` Phases 12+
+do not exist yet — do not create empty placeholder directories for a phase before it actually
+starts; the existing `src/` subpackages that are still just markers document this explicitly in
 their own docstrings. A `--full` ingestion run (the entire ~19M-row dataset, not just the
 verified recent-date sample) has also not been done — see `src/ingestion/README.md` § Sample vs.
 full mode before attempting it. **The trained fraud model performs near chance on the currently
@@ -181,7 +183,15 @@ question) is not** — `src/orchestration/live_case.py` always sets `candidate_q
 a live case can never produce `ask_question`, a pre-existing Phase 6 gap this phase's own UI
 testing surfaced. `CaseExplanation.customer_explanation_es` was never persisted before this
 phase (only `analyst_explanation` was) — fixed via a migration that also backfills existing
-rows rather than dropping them.
+rows rather than dropping them. **Phase 11's `python -m evaluation.run`
+(`docs/evaluation-plan.md` § 9) compares Rules-only, Fraud-ML-only, LLM-only, and the Hybrid
+pipeline on one common held-out sample** (`evaluation/sample.py`/`baselines.py`) — a real,
+non-obvious finding from running it: "LLM only" and "Hybrid" produce identical flagged outcomes
+on the sample (the Policy Engine never changes *which* action gets proposed, only *whether
+human approval is independently required*), so its actual effect is a separate
+`policy_engine_override_rate` metric (**measured: 19/152, 12.5%**), not visible in the
+precision/recall comparison alone — see `evaluation/README.md`. Business metrics are honestly
+`"not available"` (no approved cost coefficients exist), never a fabricated dollar figure.
 
 ## 5. Confirmed technology stack (planned, not yet implemented)
 
@@ -256,7 +266,7 @@ Real, verified commands as of Phase 1 (`docs/project-status.md`):
 ```
 uv sync                 # install dependencies (creates .venv)
 uv run ruff check .     # lint
-uv run mypy src         # type check
+uv run mypy src evaluation   # type check (evaluation/ added Phase 11 — see CI workflow)
 uv run pytest           # unit tests (fast, offline — model tests use in-memory SQLite)
 docker compose build    # build the api image
 docker compose up -d db # start db only (localhost:5433) — needed for the alembic commands below
@@ -311,6 +321,12 @@ uv run pytest tests/reliability/ -q
 # DATABASE_URL override, run migrations first), then open http://localhost:8080/ in a browser:
 DATABASE_URL="postgresql+psycopg://banking:banking@localhost:5433/banking_ai" uv run uvicorn src.api.main:app --reload --port 8080
 uv run pytest tests/unit/test_api_cases.py -q   # offline, no DATABASE_URL, no API key
+
+# Evaluation (docs/project-status.md § Phase 11 detail; evaluation/README.md) — needs the DB
+# (same DATABASE_URL override) and, for the Fraud ML row, a trained model (uv run python -m
+# src.ml.train first):
+DATABASE_URL="postgresql+psycopg://banking:banking@localhost:5433/banking_ai" uv run python -m evaluation.run
+uv run pytest tests/unit/test_evaluation.py -q   # offline, no DATABASE_URL, no API key
 ```
 
 `Makefile` mirrors these as `make install|lint|typecheck|test|docker-up|docker-down`, but
