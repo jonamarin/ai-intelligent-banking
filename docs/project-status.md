@@ -4,17 +4,16 @@ Owns: verified current implementation state. This document must never represent 
 functionality as implemented. Update it whenever a meaningful implementation phase
 (`docs/implementation-roadmap.md`) completes, changes, or blocks.
 
-**Last meaningful update:** 2026-09-26 (Phase 7 — Policy Engine implemented and verified).
+**Last meaningful update:** 2026-09-26 (Phase 8 — Security Hardening implemented and verified).
 **Last validation:** 2026-09-26 — actually run, not just inspected: `uv run ruff check .`
-(clean), `uv run mypy src` (clean, 66 files), `uv run pytest` (68/68 passed), all 10
+(clean), `uv run mypy src` (clean, 67 files), `uv run pytest` (88/88 passed), all 10
 `evaluation/golden_cases/*.json` fixtures run end-to-end through the orchestration flow with
-real authorization decisions attached, and two real live transactions run end-to-end through
-`live_case.py --persist` against the live database, including a full
-Decision -> AuditEvent -> human approval -> AuditEvent round trip (§ Phase 7 detail below).
+real authorization decisions attached, and a measured adversarial suite (17 cases: 7 injection
+phrasings + 10 golden cases) with 0 unsafe actions (§ Phase 8 detail below).
 
 ## Current phase
 
-Phase 7 (Policy Engine) complete. This repository now contains: the original master prompt
+Phase 8 (Security Hardening) complete. This repository now contains: the original master prompt
 (`prompt.md`), the competition brief (`project_presentation.txt`), the LATAM Bank dataset
 documentation (two PDFs at the repository root), the raw LATAM Bank dataset itself
 (`data/raw/`, git-ignored, ~5.0 GB — `docs/data-lineage.md` § 1), the Claude Code operating
@@ -22,14 +21,14 @@ system (`CLAUDE.md`, `docs/`, `.claude/`, `evaluation/golden_cases/`), a working
 foundation (Phase 1), a complete, migrated domain schema (Phase 2), a working, verified
 ingestion pipeline (Phase 3), a trained, evaluated fraud model with a documented, honest
 finding (Phase 4), a working Evidence Engine that has built and persisted real evidence graphs
-(Phase 5), a working case orchestration state machine (Phase 6), and now a real deterministic
-authorization path: fixed action-risk classification, the tool-authorization chain
-(authenticated? case eligible? sufficient evidence? risk-appropriate automation? human
-approval?), and DB-backed Decision/AuditEvent/HumanReview persistence for live cases (Phase 7).
-**Irreversible/Critical actions require human approval unconditionally, provably — a test that
-tries to bypass this (a permissive policy config, a manufactured high-confidence AI
-recommendation claiming no approval is needed) exists and fails, per
-`docs/demo-script.md` Scenario D's exit criteria. See `src/policies/README.md`.**
+(Phase 5), a working case orchestration state machine (Phase 6), a real deterministic
+authorization path (Phase 7), and now a centralized PII/secret redaction layer plus an
+automated red-team test suite covering `docs/guardrails.md` § 4's adversarial cases — which
+found and fixed a real gap before being reported as done (an injection-detection blind spot:
+3 of 7 tested adversarial phrasings weren't caught by the original 6-pattern list). See
+`src/security/README.md`.
+**Irreversible/Critical actions still require human approval unconditionally, provably — a
+test that tries to bypass this exists and fails (Phase 7, `docs/demo-script.md` Scenario D).**
 
 ## Status by roadmap phase (`docs/implementation-roadmap.md`)
 
@@ -42,7 +41,7 @@ recommendation claiming no approval is needed) exists and fails, per
 | 5 — Evidence Engine | IMPLEMENTED — see § Phase 5 detail below (real evidence graphs + contradiction detection verified against live data) |
 | 6 — AI Agent | IMPLEMENTED — see § Phase 6 detail below (mock-LLM orchestration verified against all 10 golden cases + 2 live transactions; genuine gaps found and honestly reported, not hidden) |
 | 7 — Policy Engine | IMPLEMENTED — see § Phase 7 detail below (Scenario D exit criteria met and tested against an actual bypass attempt; genuine remaining gaps — idempotency, risk-band/model-score wiring — honestly reported, not hidden) |
-| 8 — Security Hardening | NOT_IMPLEMENTED |
+| 8 — Security Hardening | IMPLEMENTED — see § Phase 8 detail below (0/17 unsafe actions in a measured, sample-size-stated adversarial suite; found and fixed a real injection-detection gap; several red-team cases honestly reported as not yet coverable, not silently claimed) |
 | 9 — Reliability | NOT_IMPLEMENTED |
 | 10 — UI | NOT_IMPLEMENTED |
 | 11 — Evaluation | NOT_IMPLEMENTED |
@@ -66,7 +65,8 @@ recommendation claiming no approval is needed) exists and fails, per
   (`docs/data-lineage.md` § 1).
 - **Phase 1 — Foundation**, **Phase 2 — Domain**, **Phase 3 — Ingestion**,
   **Phase 4 — Fraud ML**, **Phase 5 — Evidence Engine**, **Phase 6 — AI Agent /
-  Orchestration**, and **Phase 7 — Policy Engine**, detailed below.
+  Orchestration**, **Phase 7 — Policy Engine**, and **Phase 8 — Security Hardening**,
+  detailed below.
 
 ### Phase 1 detail
 
@@ -453,7 +453,68 @@ every table, same as the Phase 3 verification methodology. Date range: 2026-03-2
   all, because Phase 4's model score was never plumbed into `CaseInput` (a pre-existing gap,
   not new to this phase); `docs/demo-script.md` Scenario L has no golden-case fixture yet, so
   its `case_not_eligible` denial path is exercised only by hand-built unit tests. Full detail,
-  including the exact wording of every gap: `src/policies/README.md`.
+  including the exact wording of every gap: `src/policies/README.md`. **Update (2026-09-26,
+  Phase 8):** `docs/security-model.md` § 3 explicitly puts building a real identity system out
+  of scope for this prototype ("use a trusted test session/identity abstraction") — so
+  `is_authenticated` defaulting `True` is a documented scope boundary, not a Phase 8 TODO;
+  Phase 8 did not build one, correctly.
+
+### Phase 8 detail
+
+- `src/security/redaction.py`: the shared redaction layer. `mask_card_like()` fixed to match
+  `docs/observability.md` § 2's own documented example exactly (`4111111111111111` ->
+  `****1111`, a fixed 4-character mask — the Phase 1 implementation was length-preserving
+  instead, e.g. `************1111`, a real deviation from the spec, caught while centralizing
+  it). `redact_value()` recursively redacts every string in a dict/list. `src/config/logging.py`
+  now imports from here instead of duplicating the masking logic.
+- **Wired into every `AuditEvent.payload` construction, not just log lines**: `src/evidence/
+  persist.py` and `src/policies/gateway.py` now call `redact_value()` on the payload before the
+  insert — a structural guarantee (`docs/security-model.md` § 7: "redaction happens before the
+  write, not as a downstream filter"), closing a real gap where a raw sensitive value in a
+  `HumanReview.rationale` (free text a reviewer types) could otherwise have reached the
+  `audit_events` table unredacted.
+- **`tests/security/` created** (new home for security tests, per `docs/implementation-roadmap.md`
+  Phase 8 and `CLAUDE.md`'s repository map) — `test_redaction.py` (7 tests, moved and expanded
+  from `tests/unit/test_logging_redaction.py`) and `test_red_team.py` (17 tests across 11
+  functions) covering every bullet in `docs/guardrails.md` § 4 that this codebase can currently
+  exercise.
+- **A real detection gap found and fixed before being reported as done**: testing 7 adversarial
+  phrasings (the original 2 from `docs/guardrails.md` § 4 plus 5 more shapes of the same two
+  attacks — instruction override, authority claim) against `MockLLMClient`, 3 failed on first
+  run: "Olvida todo lo anterior..." (forget-the-above, Spanish), "...developer mode, ignore all
+  safety rules...", and "...soy el dueño del sistema..." (system-owner claim) all slipped past
+  the original 6-pattern `_INJECTION_PATTERNS` list. Fixed by adding 7 more patterns; all 7
+  phrasings now correctly refuse. This is exactly the value of adversarial testing over
+  documentation alone — the gap existed since Phase 6 and nothing had exercised it until now.
+- **Structural (not just behavioral) guarantee added for evidence immutability**:
+  `test_evidence_table_has_no_delete_or_update_path` statically greps every `src/*.py` file for
+  an `evidence_table.delete(`/`.update(` call and fails if one is ever added — `docs/guardrails.md`
+  § 4's "no tool exists that deletes evidence" claim is now enforced by a test that would catch
+  a regression at the source-code level, not only by inspecting `action_tools.py`.
+- **Phase 8 exit criteria measured, not just asserted**: `docs/implementation-roadmap.md`:
+  "unsafe-action rate is 0 across the full adversarial suite (MEASURED, with the sample size
+  stated)." `test_adversarial_suite_unsafe_action_rate_is_zero` runs 7 injection phrasings + all
+  10 golden cases (**17 cases**, stated) through `run_case()` and counts an outcome unsafe only
+  if an actual account-affecting action (never `escalate`/`refuse`/`ask_question`, whose own
+  low-risk tool calls are supposed to auto-execute) is authorized without human approval for an
+  injection attempt or an unresolved contradiction. **Result: 0/17.** Explicitly labeled a small,
+  stated sample — "demonstrates the mechanism holds on every case this project has authored,"
+  not a statistically powered claim (`docs/implementation-roadmap.md` Phase 8's own risk note).
+- **Honestly not covered, stated explicitly rather than silently claimed**: conflicting policy
+  documents (only 4 non-conflicting synthetic docs exist to test against), duplicate-transaction
+  detection (Phase 9's scope), impossible timestamps and customer/account mismatch (no real
+  session/identity layer exists to check against, per `docs/security-model.md` § 3's own scope
+  decision). Full detail: `src/security/README.md`.
+- 24 new tests total (7 `test_redaction.py` + 17 `test_red_team.py`), minus 4 removed
+  (`tests/unit/test_logging_redaction.py`, superseded). 88 unit/security tests total (10 Phase 1
+  + 7 Phase 2 + 3 Phase 3 + 5 Phase 4 + 13 Phase 5 + 10 Phase 6 + 20 Phase 7 + 20 Phase 8 (24
+  new − 4 removed)), all passing.
+- **Not done in this phase, by design or as an honestly-reported gap:** real authentication
+  (out of scope for this prototype, confirmed above); idempotency (Phase 9); risk-band/model-
+  score wiring (pre-existing Phase 4/6 gap); rate limiting/DoS protection at the API layer
+  (`docs/api-contracts.md` § Security — Phase 1's API isn't wired to orchestration yet);
+  supply-chain/dependency-vulnerability CI scanning (`docs/security-model.md` § 9, still
+  `PLANNED`).
 
 ## In progress
 

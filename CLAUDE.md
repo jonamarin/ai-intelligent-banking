@@ -115,12 +115,14 @@ src/                           ← application code (Phase 1+, docs/project-stat
   tools/                        ← read tools (execute directly) + action tools (proposal-only) (implemented, Phase 6)
   orchestration/                ← case state machine, golden/live case loaders (implemented, Phase 6-7)
   policies/                     ← action-risk classification, config, tool-authorization chain, Decision/AuditEvent/HumanReview gateway (implemented, Phase 7)
-  security/monitoring/
-                               ← package skeletons only; each documents which phase fills it in
+  security/                     ← centralized PII/secret redaction layer (implemented, Phase 8)
+  monitoring/
+                               ← package skeleton only; documents which phase fills it in (Phase 13)
 
 alembic/                       ← migrations (implemented, Phase 2-3) — env.py reads
                                   src.config.settings + src.models.Base.metadata
-tests/unit/                    ← 68 passing tests (10 Phase 1 + 7 Phase 2 + 3 Phase 3 + 5 Phase 4 + 13 Phase 5 + 10 Phase 6 + 20 Phase 7)
+tests/unit/                    ← 64 passing tests (10 Phase 1 + 7 Phase 2 + 3 Phase 3 + 5 Phase 4 + 13 Phase 5 + 10 Phase 6 + 20 Phase 7 − 4 superseded, moved to tests/security/)
+tests/security/                ← 24 passing tests (Phase 8: redaction + red-team/adversarial suite)
 data/models/                   ← trained model artifacts (git-ignored — binary)
 pyproject.toml, uv.lock, Dockerfile, docker-compose.yml, Makefile,
 .github/workflows/ci.yml, .pre-commit-config.yaml, .env.example
@@ -129,10 +131,11 @@ pyproject.toml, uv.lock, Dockerfile, docker-compose.yml, Makefile,
 
 Repository initialization, Phase 1 — Foundation, Phase 2 — Domain, Phase 3 — Ingestion
 (sample mode), Phase 4 — Fraud ML, Phase 5 — Evidence Engine, Phase 6 — AI Agent /
-Orchestration, and Phase 7 — Policy Engine are all done (`docs/project-status.md`).
-`infrastructure/terraform/` and everything else in `docs/implementation-roadmap.md` Phases 8+
-do not exist yet — do not create empty placeholder directories for a phase before it actually
-starts; the existing `src/` subpackages that are still just markers document this explicitly in
+Orchestration, Phase 7 — Policy Engine, and Phase 8 — Security Hardening are all done
+(`docs/project-status.md`). `infrastructure/terraform/` and everything else in
+`docs/implementation-roadmap.md` Phases 9+ do not exist yet — do not create empty placeholder
+directories for a phase before it actually starts; the existing `src/` subpackages that are
+still just markers document this explicitly in
 their own docstrings. A `--full` ingestion run (the entire ~19M-row dataset, not just the
 verified recent-date sample) has also not been done — see `src/ingestion/README.md` § Sample vs.
 full mode before attempting it. **The trained fraud model performs near chance on the currently
@@ -144,15 +147,20 @@ heuristics, never approved policy. **Phase 7's Policy Engine (`src/policies/`) n
 tool call from Phase 6 pass through a real, deterministic authorization chain** — action-risk
 is classified from fixed code + the case's own transaction facts, never from the LLM;
 Irreversible/Critical actions require human approval unconditionally, with a test that tries to
-bypass this and fails (`docs/demo-script.md` Scenario D, `src/policies/README.md`). **Genuine
-remaining gaps, honestly reported, not papered over:** idempotency-key verification does not
-exist yet (`evaluation/golden_cases/duplicate_action.json` — explicitly Phase 9's scope); no
-real authentication/session layer exists (`is_authenticated` defaults `True` everywhere —
-Phase 8's job); risk-band fraud-probability thresholds (`docs/decision-policy.md` § 5) are not
-wired in because Phase 4's model score was never plumbed into orchestration. `call_transcripts`
-currently has **0 rows** in the live database (verified during Phase 6) despite earlier
-documentation claiming a 3-day sample — see `docs/project-status.md` § Known limitations
-before relying on it.
+bypass this and fails (`docs/demo-script.md` Scenario D, `src/policies/README.md`). **Phase 8's
+`src/security/redaction.py` is the single shared PII/secret redaction implementation** — wired
+into every `AuditEvent.payload` write (not just log lines) — and `tests/security/test_red_team.py`
+automates every `docs/guardrails.md` § 4 red-team case this codebase can currently exercise
+(0/17 unsafe actions, measured — `src/security/README.md`). **Genuine remaining gaps, honestly
+reported, not papered over:** idempotency-key verification does not exist yet
+(`evaluation/golden_cases/duplicate_action.json` — explicitly Phase 9's scope); a real
+authentication/session layer is explicitly **out of scope for this prototype**
+(`docs/security-model.md` § 3: "use a trusted test session/identity abstraction" — not a
+Phase 8 gap, a deliberate scope decision); risk-band fraud-probability thresholds
+(`docs/decision-policy.md` § 5) are not wired in because Phase 4's model score was never plumbed
+into orchestration. `call_transcripts` currently has **0 rows** in the live database (verified
+during Phase 6) despite earlier documentation claiming a 3-day sample — see
+`docs/project-status.md` § Known limitations before relying on it.
 
 ## 5. Confirmed technology stack (planned, not yet implemented)
 
@@ -267,6 +275,11 @@ DATABASE_URL="postgresql+psycopg://banking:banking@localhost:5433/banking_ai" uv
 # Policy Engine (docs/project-status.md § Phase 7 detail; src/policies/README.md) — fully
 # offline, no DATABASE_URL, no API key:
 uv run pytest tests/unit/test_action_risk.py tests/unit/test_authorization.py -q
+
+# Security Hardening (docs/project-status.md § Phase 8 detail; src/security/README.md) —
+# fully offline, no DATABASE_URL, no API key. -s prints the measured adversarial-suite result:
+uv run pytest tests/security/ -q
+uv run pytest tests/security/test_red_team.py::test_adversarial_suite_unsafe_action_rate_is_zero -q -s
 ```
 
 `Makefile` mirrors these as `make install|lint|typecheck|test|docker-up|docker-down`, but

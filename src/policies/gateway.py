@@ -27,6 +27,7 @@ from sqlalchemy.engine import Engine
 
 from src.models import AuditEvent, Decision, Evidence, FraudCase, HumanReview, decision_evidence
 from src.orchestration.case import CaseInput, CaseResult
+from src.security.redaction import redact_value
 
 ReviewAction = Literal["approve", "reject", "modify", "request_more_evidence"]
 
@@ -82,6 +83,7 @@ def persist_decision(engine: Engine, case: CaseInput, result: CaseResult, model_
             )
 
         event_types = auth.audit_event_types if auth else _no_tool_audit_events(result)
+        payload = redact_value(_decision_payload(case, result))
         conn.execute(
             audit_events_table.insert(),
             [
@@ -91,7 +93,7 @@ def persist_decision(engine: Engine, case: CaseInput, result: CaseResult, model_
                     "case_id": case.case_id,
                     "decision_id": decision_id,
                     "correlation_id": None,
-                    "payload": _decision_payload(case, result),
+                    "payload": payload,
                     "created_at": now,
                 }
                 for event_type in event_types
@@ -151,7 +153,9 @@ def approve_pending_action(
                 case_id=case_id,
                 decision_id=decision_id,
                 correlation_id=None,
-                payload={"reviewer_id": reviewer_id, "action": action, "rationale": rationale},
+                payload=redact_value(
+                    {"reviewer_id": reviewer_id, "action": action, "rationale": rationale}
+                ),
                 created_at=now,
             )
         )

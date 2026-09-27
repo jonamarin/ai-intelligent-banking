@@ -6,6 +6,11 @@ Does NOT compute or store a risk_score or a Decision — that needs the Phase
 4 model and the Phase 7 policy engine wired together, which is orchestration
 (Phase 6) work, not this phase's job. `FraudCase.risk_score` and `.decision`
 are left null here, honestly, rather than half-integrated.
+
+`AuditEvent.payload` is passed through `redact_value` (Phase 8,
+src/security/redaction.py) before it's written — a structural guarantee,
+not just convention (docs/security-model.md § 7: "redaction happens before
+the write, not as a downstream filter").
 """
 
 import datetime as dt
@@ -18,6 +23,7 @@ from sqlalchemy.engine import Engine
 
 from src.evidence.graph import EvidenceGraph
 from src.models import AuditEvent, Evidence, FraudCase
+from src.security.redaction import redact_value
 
 
 def persist_evidence_graph(engine: Engine, graph: EvidenceGraph) -> None:
@@ -61,7 +67,7 @@ def persist_evidence_graph(engine: Engine, graph: EvidenceGraph) -> None:
                 case_id=graph.case_id,
                 decision_id=None,
                 correlation_id=None,
-                payload=_audit_payload(graph),
+                payload=redact_value(_audit_payload(graph)),
                 created_at=dt.datetime.now(dt.UTC),
             )
         )

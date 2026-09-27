@@ -36,6 +36,17 @@ _INJECTION_PATTERNS = [
     r"i\s+am\s+the\s+(bank\s+)?administrator",
     r"desactiva\s+(las?\s+)?(validac|verificac)",
     r"disable\s+(the\s+)?(fraud\s+)?check",
+    # Additional instruction-override/authority-claim shapes found by
+    # tests/security/test_red_team.py (Phase 8) — the two attack shapes are
+    # always the same (claim of authority; instruction override), phrased
+    # more ways than the original six patterns caught.
+    r"olvida\s+(todo\s+)?lo\s+anterior",
+    r"forget\s+(everything\s+)?(you\s+were\s+told|above|previous)",
+    r"developer\s+mode",
+    r"modo\s+desarrollador",
+    r"ignore\s+all\s+(safety\s+)?rules",
+    r"soy\s+el\s+(dueñ|propietari)o\s+del\s+sistema",
+    r"i\s+(am|'m)\s+the\s+(owner|creator)\s+of\s+(the\s+)?system",
 ]
 
 _INTENT_KEYWORDS: list[tuple[str, str]] = [

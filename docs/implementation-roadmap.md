@@ -169,18 +169,29 @@ idempotency verification (explicitly Phase 9's scope, not invented here) and no 
 authentication/session layer yet (Phase 8's job), both honestly reported rather than
 papered over with a stub that looks more complete than it is.
 
-## Phase 8 — Security Hardening
+## Phase 8 — Security Hardening — `IMPLEMENTED` (see docs/project-status.md § Phase 8 detail)
 
 **Objective:** the threats in `docs/security-model.md` § 2 have real mitigations, not just
 documentation. **Scope:** PII redaction layer, prompt-injection defenses, tool-authorization
 tests (red-team cases from `docs/guardrails.md` § 4), audit logging, security test suite.
 **Deliverables:** every red-team case has an automated test that proves it fails safely.
-**Dependencies:** Phase 7. **Tests:** `evaluation/golden_cases/prompt_injection.json` and
-related adversarial cases all pass. **Security:** this phase's own deliverable is security —
-use the `review-security` skill and the `security-reviewer` agent before marking it done.
-**Exit criteria:** unsafe-action rate is 0 across the full adversarial suite (`MEASURED`, with
-the sample size stated). **Risks:** false confidence from a small adversarial test set — state
-sample size and limitations explicitly (`docs/evaluation-plan.md` § 1).
+**Delivered as:** `src/security/redaction.py` (centralized `mask_card_like()`/`redact_value()`,
+now matching `docs/observability.md` § 2's documented mask format exactly, wired into every
+`AuditEvent.payload` construction, not just log lines) and `tests/security/` (`test_redaction.py`,
+7 tests; `test_red_team.py`, 17 tests covering every `docs/guardrails.md` § 4 case this codebase
+can currently exercise) — see `src/security/README.md` and `docs/project-status.md` § Phase 8
+detail for exactly what was built, found, and fixed. **Dependencies:** Phase 7. **Tests:**
+`evaluation/golden_cases/prompt_injection.json` and related adversarial cases all pass — met,
+plus 5 additional adversarial phrasings beyond that one fixture. **Security:** this phase's own
+deliverable is security — the `review-security` skill's checklist was run manually (found and
+fixed one real gap: 3 of 7 tested injection phrasings weren't caught by the original detection
+patterns, fixed before this was reported done). **Exit criteria:** unsafe-action rate is 0
+across the full adversarial suite (`MEASURED`, with the sample size stated) — met: **0/17**
+(7 injection phrasings + 10 golden cases), explicitly labeled a small, stated sample, not a
+statistically powered claim. **Risks:** confirmed as anticipated — false confidence from a
+small adversarial test set; several `docs/guardrails.md` § 4 cases (conflicting policy
+documents, duplicate-transaction detection, customer/account mismatch) are honestly reported as
+not yet coverable rather than silently claimed, per this same risk note.
 
 ## Phase 9 — Reliability
 
