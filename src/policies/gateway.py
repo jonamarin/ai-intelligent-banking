@@ -46,6 +46,7 @@ from src.models import (
     HumanReview,
     decision_evidence,
 )
+from src.monitoring import tracing
 from src.orchestration.case import CaseInput, CaseResult
 from src.security.redaction import redact_value
 
@@ -105,7 +106,7 @@ def persist_decision(
                         event_type="action.duplicate_detected",
                         case_id=case.case_id,
                         decision_id=original_decision_id,
-                        correlation_id=None,
+                        correlation_id=tracing.current_trace_id(),
                         payload=redact_value({"idempotency_key": auth.idempotency_key}),
                         created_at=now,
                     )
@@ -161,7 +162,7 @@ def persist_decision(
                     "event_type": event_type,
                     "case_id": case.case_id,
                     "decision_id": decision_id,
-                    "correlation_id": None,
+                    "correlation_id": tracing.current_trace_id(),
                     "payload": payload,
                     "created_at": now,
                 }
@@ -242,7 +243,7 @@ def approve_pending_action(
                     event_type="action.duplicate_detected",
                     case_id=case_id,
                     decision_id=decision_id,
-                    correlation_id=None,
+                    correlation_id=tracing.current_trace_id(),
                     payload=redact_value({"idempotency_key": key}),
                     created_at=now,
                 )
@@ -266,7 +267,7 @@ def approve_pending_action(
                 event_type="action.executed" if action == "approve" else "action.rejected",
                 case_id=case_id,
                 decision_id=decision_id,
-                correlation_id=None,
+                correlation_id=tracing.current_trace_id(),
                 payload=redact_value(
                     {"reviewer_id": reviewer_id, "action": action, "rationale": rationale}
                 ),

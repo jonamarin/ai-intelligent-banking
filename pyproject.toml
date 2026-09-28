@@ -18,6 +18,7 @@ dependencies = [
     "scikit-learn>=1.9.1",
     "xgboost>=3.4.1",
     "shap>=0.52.0",
+    "prometheus-client>=0.26.0",
 ]
 
 [dependency-groups]

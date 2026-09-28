@@ -49,9 +49,10 @@ How hard would this be to undo, and what would undoing it cost?
 Anything left unresolved by this decision.
 ```
 
-Number ADRs sequentially (`ADR-0001-...md`, `ADR-0002-...md`) in this directory. No ADRs exist
-yet — this repository initialization did not make any decision of ADR-worthy weight; it
-proposed a stack and structure, all still labeled `PROPOSED` in `docs/architecture.md`.
+Number ADRs sequentially (`ADR-0001-...md`, `ADR-0002-...md`) in this directory.
+
+- `ADR-0001-tracing-without-opentelemetry.md` (Phase 13) — traces with a small custom span
+  recorder instead of the OpenTelemetry SDK `CLAUDE.md` § 5 originally listed.
 
 ## Source-of-truth precedence
 

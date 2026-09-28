@@ -23,9 +23,21 @@ caught once here to switch to `fallback.py`'s deterministic path
 of raising out of `run_case()` and leaving the caller with nothing.
 """
 
+from collections.abc import Callable
+
 from src.agents.llm_client import LLMClient
 from src.agents.schemas import ActionProposal, IntentResult
 from src.config.settings import get_settings
+from src.monitoring import tracing
+from src.monitoring.metrics import (
+    CASES_LLM_DEGRADED_TOTAL,
+    INJECTION_ATTEMPTS_DETECTED_TOTAL,
+    LLM_CALL_DURATION_SECONDS,
+    LLM_CALLS_TOTAL,
+    TOOL_CALLS_TOTAL,
+    UNSAFE_ACTIONS_TOTAL,
+    time_histogram,
+)
 from src.orchestration.case import CaseInput, CaseResult
 from src.orchestration.fallback import (
     fallback_explain,
@@ -43,6 +55,25 @@ from src.tools.action_tools import (
     propose_freeze_card,
 )
 from src.tools.base import ToolProposal
+
+
+def _traced_llm_call[T](
+    stage: str, fn: Callable[..., T], *args: object, max_attempts: int, **kwargs: object
+) -> T:
+    """`call_with_retry`, wrapped with a `stage`-labeled span + LLM-call
+    metrics (docs/observability.md § 1 "Metrics — LLM": latency,
+    tool-call/outcome counts) -- one place so every LLM-driving stage in
+    `run_case` gets the same instrumentation instead of duplicating a
+    try/except/observe block five times."""
+    with tracing.span(f"llm.{stage}"), time_histogram(LLM_CALL_DURATION_SECONDS, stage=stage):
+        try:
+            result = call_with_retry(fn, *args, max_attempts=max_attempts, **kwargs)
+        except LLMUnavailableError:
+            LLM_CALLS_TOTAL.labels(stage=stage, outcome="degraded").inc()
+            raise
+        LLM_CALLS_TOTAL.labels(stage=stage, outcome="success").inc()
+        return result
+
 
 _POLICY_QUERY_BY_ACTION = {
     "create_dispute": "política de disputas de transacciones",
@@ -76,16 +107,32 @@ def _authorize_action(
     proposal = _tool_proposal_for_action(case, action)
     if proposal is None:
         return None
-    return authorize(
-        proposal,
-        case_status=case.case_status,
-        escalation_required=case.escalation_required,
-        transaction_type=case.transaction_type,
-        requested_action=case.requested_action,
-        amount_usd=case.amount_usd,
-        requested_amount_usd=case.requested_amount_usd,
-        config=config,
-    )
+    with tracing.span("policy.authorize", tool_name=proposal.tool_name):
+        result = authorize(
+            proposal,
+            case_status=case.case_status,
+            escalation_required=case.escalation_required,
+            transaction_type=case.transaction_type,
+            requested_action=case.requested_action,
+            amount_usd=case.amount_usd,
+            requested_amount_usd=case.requested_amount_usd,
+            config=config,
+        )
+    TOOL_CALLS_TOTAL.labels(
+        tool_name=proposal.tool_name,
+        authorized=str(result.authorized),
+        requires_human_approval=str(result.requires_human_approval),
+    ).inc()
+    # docs/guardrails.md § 4's invariant, watched live here with the exact
+    # same definition tests/security/test_red_team.py proves offline: an
+    # account-affecting action (anything but escalate/refuse/ask_question)
+    # must never auto-execute (authorized, no human approval required) for
+    # an injection attempt or an unresolved contradiction.
+    auto_executed = result.authorized and not result.requires_human_approval
+    is_account_affecting = action.proposed_action not in ("escalate", "refuse", "ask_question")
+    if auto_executed and is_account_affecting and case.escalation_required:
+        UNSAFE_ACTIONS_TOTAL.inc()
+    return result
 
 
 def summarize_evidence(case: CaseInput) -> str:
@@ -109,6 +156,7 @@ def _refusal(
     # Detecting an injection attempt never changes what the system does —
     # the request is refused regardless of what it asked for
     # (docs/guardrails.md § 4).
+    INJECTION_ATTEMPTS_DETECTED_TOTAL.inc()
     action = ActionProposal(
         proposed_action="refuse",
         reason="Customer message attempted to override system instructions or claimed "
@@ -142,6 +190,7 @@ def _degraded_result(
     provider call); everything downstream degrades to
     `src/orchestration/fallback.py`'s conservative, escalate-by-default path.
     """
+    CASES_LLM_DEGRADED_TOTAL.inc()
     if intent is None:
         intent = fallback_extract_intent(case.customer_message)
     action = fallback_propose_action(intent.injection_attempt_detected)
@@ -171,9 +220,23 @@ def run_case(
 ) -> CaseResult:
     attempts = max_attempts if max_attempts is not None else get_settings().llm_max_attempts
 
+    with tracing.span("case.run", case_id=case.case_id):
+        return _run_case_traced(case, llm_client, rag, policy_config, attempts)
+
+
+def _run_case_traced(
+    case: CaseInput,
+    llm_client: LLMClient,
+    rag: PolicyRAG | None,
+    policy_config: PolicyConfig | None,
+    attempts: int,
+) -> CaseResult:
     try:
-        intent = call_with_retry(
-            llm_client.extract_intent, case.customer_message, max_attempts=attempts
+        intent: IntentResult = _traced_llm_call(
+            "extract_intent",
+            llm_client.extract_intent,
+            case.customer_message,
+            max_attempts=attempts,
         )
     except LLMUnavailableError:
         return _degraded_result(case, rag, policy_config)
@@ -184,7 +247,8 @@ def run_case(
     evidence_summary = summarize_evidence(case)
 
     try:
-        next_question = call_with_retry(
+        next_question = _traced_llm_call(
+            "decide_next_question",
             llm_client.decide_next_question,
             evidence_summary,
             case.candidate_questions,
@@ -197,15 +261,16 @@ def run_case(
                 requires_human_approval=False,
             )
         else:
-            action = call_with_retry(
+            action = _traced_llm_call(
+                "propose_action",
                 llm_client.propose_action,
                 evidence_summary,
                 contradiction_count=len(case.contradictions),
                 escalation_required=case.escalation_required,
                 max_attempts=attempts,
             )
-        explanation = call_with_retry(
-            llm_client.explain, evidence_summary, action, max_attempts=attempts
+        explanation = _traced_llm_call(
+            "explain", llm_client.explain, evidence_summary, action, max_attempts=attempts
         )
     except LLMUnavailableError:
         return _degraded_result(case, rag, policy_config, intent=intent)
@@ -229,8 +294,9 @@ def _ground_in_policy(rag: PolicyRAG | None, proposed_action: str) -> str | None
     if rag is None:
         return None
     query = _POLICY_QUERY_BY_ACTION.get(proposed_action, proposed_action)
-    try:
-        result = rag.retrieve(query)
-    except Exception:
-        return None
+    with tracing.span("rag.retrieve", proposed_action=proposed_action):
+        try:
+            result = rag.retrieve(query)
+        except Exception:
+            return None
     return result.chunk.source_file if result else None

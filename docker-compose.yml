@@ -29,5 +29,42 @@ services:
       timeout: 5s
       retries: 10
 
+  # Phase 13 (docs/observability.md § 4, docs/project-status.md § Phase 13
+  # detail) — optional, local-only. Never started by a plain
+  # `docker compose up`; opt in with `docker compose --profile monitoring
+  # up -d` (or `make monitoring-up`) precisely because this machine has
+  # been memory-constrained throughout the project (docs/project-status.md
+  # § Known limitations) and most work doesn't need it running.
+  prometheus:
+    image: prom/prometheus:v2.55.1
+    profiles: ["monitoring"]
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./infrastructure/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./infrastructure/prometheus/alerts.yml:/etc/prometheus/alerts.yml:ro
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+    depends_on:
+      - api
+
+  grafana:
+    image: grafana/grafana:11.3.1
+    profiles: ["monitoring"]
+    ports:
+      # Host port 3001 avoids clashing with something else already using
+      # 3000 on this development machine — container still listens on 3000
+      # internally.
+      - "3001:3000"
+    environment:
+      GF_AUTH_ANONYMOUS_ENABLED: "true"
+      GF_AUTH_ANONYMOUS_ORG_ROLE: Viewer
+      GF_SECURITY_ADMIN_PASSWORD: admin
+    volumes:
+      - ./infrastructure/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./infrastructure/grafana/dashboards:/var/lib/grafana/dashboards:ro
+    depends_on:
+      - prometheus
+
 volumes:
   pgdata:

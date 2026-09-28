@@ -1,4 +1,4 @@
-.PHONY: install dev test lint typecheck format migrate train evaluate redteam seed demo docker-up docker-down
+.PHONY: install dev test lint typecheck format migrate train evaluate redteam seed demo docker-up docker-down monitoring-up monitoring-down
 
 # Host-mapped Postgres port (see docker-compose.yml and CLAUDE.md § 9) — migrate/seed
 # run on the host, not inside a container, so they need the host-mapped port, not
@@ -51,3 +51,11 @@ docker-up:
 
 docker-down:
 	docker compose down
+
+# Optional, local-only Prometheus + Grafana (Phase 13, docs/project-status.md
+# § Phase 13 detail) -- never started by docker-up above.
+monitoring-up:
+	docker compose --profile monitoring up -d prometheus grafana
+
+monitoring-down:
+	docker compose --profile monitoring down

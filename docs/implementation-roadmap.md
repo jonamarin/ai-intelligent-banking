@@ -309,6 +309,8 @@ explicitly deferred). Full detail: `docs/project-status.md` § Phase 12 detail, 
 
 ## Phase 13 — Observability
 
+`IMPLEMENTED` (see `docs/project-status.md` § Phase 13 detail).
+
 **Objective:** `docs/observability.md` is implemented, not just described. **Scope:**
 structured logs, metrics (system/ML/LLM/business), traces, dashboards, alerts.
 **Dependencies:** Phases 1–9. **Tests:** a redaction test proving a raw card number/secret
@@ -318,6 +320,25 @@ never reaches a log sink. **Security:** this phase directly implements `docs/obs
 (`docs/observability.md` § 5), demonstrated on a seeded scenario. **Risks:** observability is
 often built last and rushed — its redaction correctness is a hard security requirement, not
 optional polish; do not compress this phase's test coverage under time pressure.
+
+**Delivered as:** `src/monitoring/metrics.py` (real Prometheus counters/histograms at real call
+sites) + `src/monitoring/tracing.py` (a small custom span recorder instead of the OpenTelemetry
+SDK originally listed in `CLAUDE.md` § 5 — `docs/decisions/ADR-0001-tracing-without-opentelemetry.md`)
++ `GET /metrics` + `infrastructure/prometheus/`, `infrastructure/grafana/` (behind
+docker-compose's optional `monitoring` profile). **Tests:** 15
+(`tests/unit/test_metrics.py` 9, `tests/unit/test_tracing.py` 6 — including the required
+redaction-proof test, extended to the new trace-span emission point). **Exit criteria met,
+verified live against a real Postgres, not simulated:** a case created through the API with a
+known `X-Correlation-ID` was reconstructed from its trace spans (grep by `trace_id` in the
+container's log stream) plus one `audit_events` query by the same `correlation_id` — see
+`src/monitoring/README.md` § Incident reconstruction for the exact commands and output. Also
+fixed, in the same verification pass, the Phase 10-documented gap where
+`AuditEvent.correlation_id` was always `None`. Two real bugs found and fixed while verifying
+this phase (not merely anticipated): a database-unreachable timeout that `connect_timeout` alone
+didn't actually bound (DNS resolution ahead of the TCP connect took as long as ~60s), and a
+metrics-collector duplicate-registration bug that serialized that latency N times into one
+scrape — both detailed in `src/monitoring/README.md`. Full detail:
+`docs/project-status.md` § Phase 13 detail.
 
 ## Phase 14 — Deployment Readiness (documentation only for this competition)
 

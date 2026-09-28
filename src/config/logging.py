@@ -43,6 +43,14 @@ class JSONFormatter(logging.Formatter):
         correlation_id = getattr(record, "correlation_id", None)
         if correlation_id:
             payload["correlation_id"] = correlation_id
+        # A structured event (e.g. src/monitoring/tracing.py's `event_data`
+        # for a `trace.span` line) gets merged in, overriding the generic
+        # `message` placeholder with its own real fields -- one JSON schema
+        # for both free-text logging and structured trace/event emission,
+        # rather than a second logger/formatter for the latter.
+        event_data = getattr(record, "event_data", None)
+        if isinstance(event_data, dict):
+            payload.update(event_data)
         if record.exc_info:
             payload["exception"] = self.formatException(record.exc_info)
         return json.dumps(payload)

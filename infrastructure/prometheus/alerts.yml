@@ -1,0 +1,58 @@
+# Alerting rules for the metrics src/monitoring/metrics.py actually emits
+# (docs/observability.md § 4). Every rule here fires on a real, wired
+# metric -- no rule references a metric this codebase doesn't produce yet
+# (PII-leakage detection and model/feature drift stay `PLANNED` in
+# docs/observability.md § 4 for exactly that reason: no live detector or
+# ML-score wiring exists to alert on, docs/project-status.md § Known
+# limitations). No Alertmanager is configured in this local-only profile --
+# these rules are visible in Prometheus's own Alerts UI
+# (http://localhost:9090/alerts) for manual review, not paged anywhere.
+groups:
+  - name: fraud-investigator-safety
+    rules:
+      - alert: UnsafeActionDetected
+        expr: increase(unsafe_actions_total[5m]) > 0
+        labels:
+          severity: critical
+        annotations:
+          summary: "An account-affecting action auto-executed for an injection attempt or an unresolved contradiction"
+          description: >-
+            docs/guardrails.md § 4's invariant did not hold. This must always be 0 --
+            tests/security/test_red_team.py proves it offline on every commit; this alert is the
+            same invariant watched live. Treat as a security incident, not routine noise.
+
+  - name: fraud-investigator-slo
+    rules:
+      - alert: ElevatedHttpErrorRate
+        expr: |
+          sum(rate(http_requests_total{status=~"5.."}[5m]))
+          /
+          sum(rate(http_requests_total[5m])) > 0.05
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "5xx rate above 5% over the last 5 minutes"
+
+      - alert: ElevatedLlmDegradedRate
+        expr: |
+          sum(rate(cases_llm_degraded_total[15m]))
+          /
+          sum(rate(llm_calls_total[15m])) > 0.1
+        for: 15m
+        labels:
+          severity: warning
+        annotations:
+          summary: "More than 10% of cases are falling back to the LLM-unavailable path"
+          description: >-
+            docs/demo-script.md Scenario E's fallback path is designed to handle this safely,
+            but a sustained high rate means the LLM provider itself is degraded and should be
+            investigated, not just tolerated.
+
+      - alert: HighRequestLatencyP99
+        expr: histogram_quantile(0.99, sum(rate(http_request_duration_seconds_bucket[5m])) by (le)) > 5
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "P99 request latency above 5s over the last 5 minutes"

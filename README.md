@@ -5,7 +5,7 @@ dispute intake and fraud investigation** for a synthetic LATAM retail bank. Buil
 Factored Datathon 2026 (`project_presentation.txt`), following the technical vision in
 `prompt.md`.
 
-> **Status: Phase 12 (Demo) complete.** This repository contains the project's Claude
+> **Status: Phase 13 (Observability) complete.** This repository contains the project's Claude
 > Code operating system, a working application foundation, a complete, migrated PostgreSQL
 > schema, a verified ingestion pipeline, a trained, evaluated fraud model with an
 > honestly-reported result (**it performs near chance on the currently loaded sample** — a real
@@ -17,10 +17,15 @@ Factored Datathon 2026 (`project_presentation.txt`), following the technical vis
 > API** plus a server-rendered **customer/analyst UI** verified live end-to-end in a real
 > browser, `python -m evaluation.run` (`docs/evaluation-plan.md`) — comparing
 > **Rules-only, Fraud-ML-only, LLM-only, and the Hybrid pipeline** on one common held-out
-> sample, plus fairness metrics by country — and now `python -m demo.run` (`make demo`,
+> sample, plus fairness metrics by country, `python -m demo.run` (`make demo`,
 > `docs/demo-script.md`), a fully offline, graded walkthrough of all 12 documented scenarios
 > (**9/12 PASS, 3/12 PARTIAL, 0/12 FAIL** — see `demo/README.md` for exactly what each `PARTIAL`
-> means and why). **A real, non-obvious finding from actually running the evaluation
+> means and why) — and now real **Prometheus metrics + a lightweight custom tracer**
+> (`GET /metrics`, optional Grafana dashboards via `make monitoring-up`), with the incident-
+> reconstruction guarantee (`docs/observability.md` § 5) verified live against a real database:
+> a case created through the API was fully reconstructed from its trace spans plus one
+> `audit_events` query by a shared correlation ID — see `src/monitoring/README.md`.
+> **A real, non-obvious finding from actually running the evaluation
 > comparison**: "LLM only" and "Hybrid" produce identical outcomes on the sample — the Policy
 > Engine never changes *which* action gets proposed, only *whether human approval is
 > independently required* — so its real, measured effect (**19/152 cases, 12.5%**, where the LLM
@@ -33,13 +38,13 @@ Factored Datathon 2026 (`project_presentation.txt`), following the technical vis
 > explicitly out of scope for this prototype (`docs/security-model.md` § 3); risk-band
 > fraud-probability thresholds aren't wired in because Phase 4's model score was never plumbed
 > into orchestration — which is also why "Hybrid" in the evaluation excludes the ML score and
-> says so everywhere it's reported; one of the twelve demo scenarios (asking the customer a
-> clarifying question, live) isn't reachable outside the offline golden-case suite yet. The
-> Evidence Engine's device fingerprint is a documented heuristic proxy, and its
-> direction/confidence values are illustrative, never approved policy. See
-> `docs/project-status.md` for the authoritative, up-to-date state. Every claim in this README is
-> labeled `Implemented`, `Planned`, `Partial`, or `Mocked` — treat anything unlabeled as
-> aspirational.
+> says so everywhere it's reported, and why no live ML-drift metric/alert exists either; one of
+> the twelve demo scenarios (asking the customer a clarifying question, live) isn't reachable
+> outside the offline golden-case suite yet. The Evidence Engine's device fingerprint is a
+> documented heuristic proxy, and its direction/confidence values are illustrative, never
+> approved policy. See `docs/project-status.md` for the authoritative, up-to-date state. Every
+> claim in this README is labeled `Implemented`, `Planned`, `Partial`, or `Mocked` — treat
+> anything unlabeled as aspirational.
 
 ## 1. Problem
 
@@ -102,10 +107,12 @@ evaluation/golden_cases/      Synthetic scenario fixtures (schema + 11 cases, Sc
 demo/                          Scripted, graded demo-script.md walkthrough (implemented, Phase 12) — python -m demo.run
 src/                           FastAPI app + JSON API + server-rendered UI, config/logging,
                                 domain models, ingestion pipeline, fraud ML, evidence engine,
-                                AI agent + orchestration, policy engine, security/redaction
-                                (implemented); other subpackages are future-phase skeletons
+                                AI agent + orchestration, policy engine, security/redaction,
+                                Prometheus metrics + tracing (implemented, Phase 13)
+infrastructure/                 Prometheus + Grafana config (Phase 13) — optional docker-compose
+                                `monitoring` profile, make monitoring-up
 alembic/                       Migrations (implemented) — 17 tables + 1 link table
-tests/unit/                   116 passing tests (includes 18 Phase 10 API tests + 20 Phase 11 evaluation tests + 14 Phase 12 demo tests)
+tests/unit/                   131 passing tests (includes 18 Phase 10 API tests + 20 Phase 11 evaluation tests + 14 Phase 12 demo tests + 15 Phase 13 observability tests)
 tests/security/                24 passing tests (redaction + red-team/adversarial suite)
 tests/reliability/             23 passing tests (retry/fallback, idempotency, DB-timeout)
 data/raw/                      Raw LATAM Bank dataset (git-ignored, ~5.0 GB — not in git)
@@ -127,7 +134,7 @@ Verified working (`docs/project-status.md`):
 git clone <repo> && cd ai-intelligent-banking
 cp .env.example .env                  # fill in real values only if you need them; mock LLM mode needs none
 uv sync                               # installs dependencies into .venv
-uv run pytest                         # 163/163 passing (offline — model/ingestion/ML/evidence/orchestration/policy/security/reliability/API/evaluation/demo tests use in-memory SQLite / fixtures)
+uv run pytest                         # 178/178 passing (offline — model/ingestion/ML/evidence/orchestration/policy/security/reliability/API/evaluation/demo/observability tests use in-memory SQLite / fixtures)
 uv run ruff check . && uv run mypy src evaluation demo   # lint + typecheck, both clean
 docker compose up -d                  # api on :8080, db (pgvector/pg16) on :5433
 curl http://localhost:8080/api/v1/health
@@ -171,6 +178,15 @@ uv run pytest tests/unit/test_evaluation.py -q   # offline, no DB, no API key
 uv run python -m demo.run
 uv run pytest tests/unit/test_demo.py -q
 
+# metrics + tracing (src/monitoring/README.md) — unit tests offline; /metrics needs the API:
+uv run pytest tests/unit/test_metrics.py tests/unit/test_tracing.py -q
+curl http://localhost:8080/metrics
+
+# optional: Prometheus (:9090) + Grafana (:3001, admin/admin) — local-only, never started by
+# the plain docker compose up above:
+make monitoring-up
+make monitoring-down
+
 docker compose down
 ```
 
@@ -190,24 +206,35 @@ already-documented, non-unsafe limitation each — see `demo/README.md`), **0 gr
 scenario detail: `docs/demo-script.md`. Machine-readable fixtures for all twelve:
 `evaluation/golden_cases/`.
 
-## 8. Security — `Partial` (designed, not yet enforced in code)
+## 8. Security — `Implemented`
 
 Threat model, trust boundaries, and mitigations: `docs/security-model.md`. Runtime enforcement
 model (which layer actually enforces each guardrail — prompt, code validation, permission
-check, or human approval): `docs/guardrails.md`. Two Claude-Code-level hooks are active today
-(`Implemented`, dev-time only — see § 10): `.claude/hooks/README.md`.
+check, or human approval): `docs/guardrails.md`. Enforced in code, not just designed: a
+centralized redaction layer (`src/security/redaction.py`), a deterministic tool-authorization
+chain (`src/policies/`), and an automated red-team suite (**0/18 unsafe actions, measured**,
+`tests/security/`). Two Claude-Code-level hooks are also active, dev-time only (§ 11):
+`.claude/hooks/README.md`.
 
-## 9. Privacy and fairness — `Planned`
+## 9. Privacy and fairness — `Implemented`
 
 PII classification and minimization rules: `docs/data-governance.md`. Fairness evaluation
 methodology (subgroup comparison across country/segment/dialect, never as decision inputs):
-`docs/model-evaluation.md` § 13. No fairness claim is made until it's actually measured.
+`docs/model-evaluation.md` § 13. Measured, not just designed: `python -m evaluation.run`'s
+fairness breakdown by country (Phase 11, `evaluation/fairness.py`, `evaluation/README.md`) —
+152-case sample, directional not statistically powered, reported as such.
 
-## 10. Reliability and scalability — `Planned`
+## 10. Reliability, scalability, and observability — `Implemented`
 
 Failure-mode table (what happens if the LLM, database, or fraud model is unavailable) and
-scalability design targets: `docs/architecture.md` §§ 10, 12. These are design targets, not
-measurements — see the labeling rule in `docs/evaluation-plan.md` § 1.
+scalability design targets: `docs/architecture.md` §§ 10, 12 (design targets, not measurements —
+see the labeling rule in `docs/evaluation-plan.md` § 1). The failure modes themselves are
+handled and tested in code: bounded retry + deterministic fallback for LLM failures, a bounded
+DB connect timeout, RAG-failure degradation, and a real idempotency mechanism (Phase 9,
+`tests/reliability/`). Observability (Phase 13, `src/monitoring/README.md`): real Prometheus
+metrics (`GET /metrics`), a lightweight custom tracer, and optional Grafana dashboards/alerts
+(`make monitoring-up`) — the incident-reconstruction guarantee
+(`docs/observability.md` § 5) verified live against a real database, not simulated.
 
 ## 11. Claude Code operating system — `Implemented`
 

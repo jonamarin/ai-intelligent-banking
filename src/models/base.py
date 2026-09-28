@@ -32,11 +32,18 @@ def get_engine() -> Engine:
     minutes), which is not "a clear error," it's an unbounded stall.
     """
     settings = get_settings()
-    return create_engine(
+    engine = create_engine(
         settings.database_url,
         pool_pre_ping=True,
         connect_args={"connect_timeout": settings.db_connect_timeout_seconds},
     )
+    # Phase 13 (docs/observability.md § 1 "Metrics — system": database
+    # latency) — every engine gets query-duration instrumentation, not just
+    # the ones the API layer happens to construct.
+    from src.monitoring.instrumentation import instrument_engine
+
+    instrument_engine(engine)
+    return engine
 
 
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=get_engine())

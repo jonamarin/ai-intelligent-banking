@@ -24,6 +24,7 @@ human_review_status='pending') via src/policies/gateway.py.
 
 import argparse
 import dataclasses
+import uuid
 
 from sqlalchemy import text
 from sqlalchemy.engine import Engine
@@ -119,9 +120,19 @@ def create_and_run_case(
     their own presentation on top of these same underlying objects."""
     from src.agents.llm_client import MockLLMClient
     from src.evidence.persist import persist_evidence_graph
+    from src.monitoring import tracing
     from src.orchestration.flow import run_case
     from src.policies.gateway import persist_decision
     from src.retrieval.policy_rag import PolicyRAG
+
+    # docs/observability.md § 5 (incident reconstruction from traces + audit
+    # log alone): the API layer seeds a trace ID from the request's own
+    # X-Correlation-ID (src/api/main.py); a direct CLI/script call has no
+    # request to derive one from, so seed a fresh one here if none is
+    # already active in this context -- every case run ends up with a real,
+    # non-null trace/correlation ID either way.
+    if tracing.current_trace_id() is None:
+        tracing.seed_trace_id(str(uuid.uuid4()))
 
     graph = build_evidence_graph(engine, transaction_id)
     if persist:

@@ -4,15 +4,17 @@ Owns: verified current implementation state. This document must never represent 
 functionality as implemented. Update it whenever a meaningful implementation phase
 (`docs/implementation-roadmap.md`) completes, changes, or blocks.
 
-**Last meaningful update:** 2026-09-27 (Phase 12 — Demo implemented and verified).
-**Last validation:** 2026-09-27 — actually run, not just inspected: `uv run ruff check .`
-(clean), `uv run mypy src evaluation demo` (clean), `uv run pytest` (163/163 passed), and
-`uv run python -m demo.run` (all 12 `docs/demo-script.md` scenarios: 9 PASS, 3 PARTIAL, 0 FAIL,
-exit code 0) (§ Phase 12 detail below).
+**Last meaningful update:** 2026-09-28 (Phase 13 — Observability implemented and verified).
+**Last validation:** 2026-09-28 — actually run, not just inspected: `uv run ruff check .`
+(clean), `uv run mypy src evaluation demo` (clean), `uv run pytest` (178/178 passed), and a full
+live verification against a real Postgres + Docker stack: a case created via the API was
+reconstructed from its trace spans and one `audit_events` query by a shared correlation ID, and
+the optional `monitoring` docker-compose profile (Prometheus + Grafana) was brought up, verified
+scraping and alerting on real metrics, and torn down (§ Phase 13 detail below).
 
 ## Current phase
 
-Phase 12 (Demo) complete. This repository now contains: the original master prompt
+Phase 13 (Observability) complete. This repository now contains: the original master prompt
 (`prompt.md`), the competition brief (`project_presentation.txt`), the LATAM Bank dataset
 documentation (two PDFs at the repository root), the raw LATAM Bank dataset itself
 (`data/raw/`, git-ignored, ~5.0 GB — `docs/data-lineage.md` § 1), the Claude Code operating
@@ -26,9 +28,12 @@ authorization path (Phase 7), a centralized PII/secret redaction layer and red-t
 JSON API plus server-rendered customer/analyst UI (Phase 10), a real system-level evaluation
 comparing Rules-only, Fraud-ML-only, LLM-only, and the Hybrid pipeline on one common held-out
 sample plus fairness, LLM/agent, reliability, and business metrics (Phase 11, the last honestly
-`"not available"`, never fabricated — see `evaluation/README.md`), and now `demo/` — all 12
+`"not available"`, never fabricated — see `evaluation/README.md`), `demo/` — all 12
 `docs/demo-script.md` scenarios runnable and graded on demand (`make demo` or
-`uv run python -m demo.run`), fully offline. See `demo/README.md`.
+`uv run python -m demo.run`), fully offline (Phase 12, see `demo/README.md`), and now
+`src/monitoring/` — real Prometheus metrics, a lightweight custom tracer, and an optional
+Grafana/Prometheus stack, all verified live against a real Postgres. See
+`src/monitoring/README.md`.
 **A real, non-obvious finding from actually running the comparison**: "LLM only" and "Hybrid"
 produce identical flagged outcomes on the sample — the Policy Engine never changes *which*
 action gets proposed, only *whether human approval is independently required*. Its actual
@@ -53,7 +58,7 @@ exactly why this project reports it as its own line rather than only the aggrega
 | 10 — UI | IMPLEMENTED — see § Phase 10 detail below (Scenarios A/B/D drivable live in a real browser, verified; Scenario C honestly reported as not yet reachable live — a pre-existing Phase 6 gap this phase's testing surfaced) |
 | 11 — Evaluation | IMPLEMENTED — see § Phase 11 detail below (all four `docs/evaluation-plan.md` § 10 approaches measured on one live, 152-case common held-out sample; business metrics honestly "not available," not fabricated) |
 | 12 — Demo | IMPLEMENTED — see § Phase 12 detail below (all 12 `docs/demo-script.md` scenarios runnable and graded PASS/PARTIAL/FAIL, offline; 9 PASS, 3 PARTIAL, 0 FAIL) |
-| 13 — Observability | NOT_IMPLEMENTED |
+| 13 — Observability | IMPLEMENTED — see § Phase 13 detail below (real metrics/traces/audit-log correlation verified live against a real Postgres; incident-reconstruction exit criterion demonstrated end-to-end; two real bugs found and fixed) |
 | 14 — Deployment Readiness (docs) | PARTIALLY_IMPLEMENTED — `docs/architecture.md`, `docs/security-model.md`, and this document lay out what deployment readiness requires; no actual readiness checklist has been executed because nothing is deployed |
 
 ## Completed
@@ -73,8 +78,8 @@ exactly why this project reports it as its own line rather than only the aggrega
 - **Phase 1 — Foundation**, **Phase 2 — Domain**, **Phase 3 — Ingestion**,
   **Phase 4 — Fraud ML**, **Phase 5 — Evidence Engine**, **Phase 6 — AI Agent /
   Orchestration**, **Phase 7 — Policy Engine**, **Phase 8 — Security Hardening**,
-  **Phase 9 — Reliability**, **Phase 10 — UI**, **Phase 11 — Evaluation**, and
-  **Phase 12 — Demo**, detailed below.
+  **Phase 9 — Reliability**, **Phase 10 — UI**, **Phase 11 — Evaluation**,
+  **Phase 12 — Demo**, and **Phase 13 — Observability**, detailed below.
 
 ### Phase 1 detail
 
@@ -775,6 +780,77 @@ every table, same as the Phase 3 verification methodology. Date range: 2026-03-2
   presentation-oriented grouping. No executive/business polish beyond the CLI walkthrough (no
   slide deck, no video) — out of scope for this phase's own stated deliverable. Full detail:
   `demo/README.md`.
+
+### Phase 13 detail
+
+- `src/monitoring/metrics.py`: real Prometheus counters/histograms at real instrumentation
+  points — system (`http_requests_total`, `http_request_duration_seconds`,
+  `db_query_duration_seconds`), LLM (`llm_calls_total{stage,outcome}`,
+  `llm_call_duration_seconds{stage}`, `cases_llm_degraded_total`), security
+  (`injection_attempts_detected_total`, `unsafe_actions_total` — same definition
+  `tests/security/test_red_team.py` proves offline), tools (`tool_calls_total`), and business
+  (`business_automation_rate`, `business_human_escalation_rate`, `business_fraud_cases_total`,
+  computed live from the database on every scrape, not accumulated). `GET /metrics`
+  (`src/api/main.py`) renders them.
+- `src/monitoring/tracing.py`: one root `case.run` span per `run_case()` call plus child spans
+  for every LLM stage, RAG retrieval, and policy authorization (`src/orchestration/flow.py`),
+  and one `http.request` span per API request (`src/api/main.py`) — a small, dependency-free
+  custom span recorder, not the OpenTelemetry SDK `CLAUDE.md` § 5 originally listed
+  (`docs/decisions/ADR-0001-tracing-without-opentelemetry.md`). Spans are structured JSON log
+  lines, redacted before they reach the log sink, correlated by `trace_id`.
+- **A real, previously-honestly-documented gap, fixed**: `src/policies/gateway.py`'s
+  `AuditEvent.correlation_id` was always written as `None` (`docs/project-status.md` § Phase 10
+  detail). It now reads `tracing.current_trace_id()`, seeded from the request's own
+  `X-Correlation-ID` (`src/api/main.py`) or a fresh UUID for a direct CLI call
+  (`src/orchestration/live_case.py`).
+- `infrastructure/prometheus/` (scrape config + 4 real alert rules against real metrics),
+  `infrastructure/grafana/` (auto-provisioned datasource + a 10-panel dashboard) — both wired
+  into `docker-compose.yml` behind an opt-in `monitoring` profile (`make monitoring-up`/
+  `make monitoring-down`), never started by a plain `docker compose up`, since this development
+  machine has been memory-constrained throughout the project.
+- **Exit criteria met, verified live against a real Postgres, not simulated**
+  (`docs/implementation-roadmap.md`: "an incident can be reconstructed from traces + audit log
+  alone"): created a real case via `POST /api/v1/cases` with a known `X-Correlation-ID`;
+  reconstructed the full pipeline from the container's log stream filtered by `trace_id`
+  (`http.request` → `case.run` → `llm.extract_intent`/`decide_next_question`/`propose_action`/
+  `explain` → `rag.retrieve` → `policy.authorize`, each with a real measured `duration_ms`); and
+  independently confirmed the same story from `SELECT ... FROM audit_events WHERE
+  correlation_id = '<the same ID>'`. Also verified the `monitoring` profile end-to-end: Prometheus
+  scraping the `api` service (`"health": "up"` within one scrape interval), all four alert rules
+  loaded (`"health": "ok"`), and Grafana auto-provisioning its datasource and dashboard, with a
+  direct query through Grafana's own proxy returning a real `business_automation_rate` value.
+  All containers torn down afterward. Full transcript: `src/monitoring/README.md` § Incident
+  reconstruction.
+- **Two real bugs found and fixed while verifying this phase, not merely anticipated** (full
+  detail: `src/monitoring/README.md`): (1) `Settings.db_connect_timeout_seconds` bounds the TCP
+  connect step but not DNS resolution ahead of it — resolving the `.env` default's `db` hostname
+  from the bare host took as long as ~60 seconds the first time in a process on this Windows
+  machine, discovered because `tests/unit/test_metrics.py` itself started taking 133s instead of
+  ~9s; fixed with an explicit, independent wall-clock bound around the whole business-metrics
+  query. (2) The fix for bug 1 had its own bug: `register_business_metrics` relied on
+  `CollectorRegistry.register()` rejecting a duplicate name, which never actually happens for a
+  collector without a `describe()` method — every `create_app()` call (18 times, once per
+  `tests/unit/test_api_cases.py` test) silently registered a *new* collector, serializing up to
+  18× the per-collector DNS-failure latency into one scrape; fixed with an explicit module-level
+  idempotency guard, regression-tested
+  (`tests/unit/test_metrics.py::test_register_business_metrics_is_idempotent_per_process`).
+- 15 new tests: `tests/unit/test_metrics.py` (9 — `BusinessMetricsCollector` against a real
+  in-memory SQLite engine, the DB-failure/empty-table degrade paths, `time_histogram`, the
+  idempotent-registration regression test) and `tests/unit/test_tracing.py` (6 — span
+  nesting/parent-child, error status on an exception, trace-ID seeding, and this phase's own
+  required redaction-proof test extended to the new trace-span emission point). 178
+  unit/security/reliability/evaluation/demo/observability tests total (10 Phase 1 + 7 Phase 2 +
+  3 Phase 3 + 5 Phase 4 + 13 Phase 5 + 10 Phase 6 + 20 Phase 7 + 20 Phase 8 + 23 Phase 9 + 18
+  Phase 10 + 20 Phase 11 + 14 Phase 12 + 15 Phase 13), all passing.
+- **Not done in this phase, by design or as an honestly-reported gap:** no log
+  aggregation/retention backend (ELK, Loki, CloudWatch) — trace/log data lives only in each
+  container's own stdout, as before this phase; no PII-leakage detector or ML/feature-drift
+  monitor (no live detector exists for either, and the Fraud ML score still isn't wired into
+  orchestration — a pre-existing Phase 4 gap); no LLM cost tracking (`MockLLMClient` makes no
+  real provider call, so there is no real token/cost figure to report — a fabricated `SIMULATED`
+  estimate was considered and rejected, `docs/observability.md` § 6); `GET /metrics` has no
+  authentication (acceptable for a local-only prototype with no production deployment,
+  `CLAUDE.md` § 7). Full detail: `src/monitoring/README.md`.
 
 ## In progress
 

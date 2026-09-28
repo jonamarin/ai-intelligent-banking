@@ -121,12 +121,13 @@ src/                           ← application code (Phase 1+, docs/project-stat
   orchestration/                ← case state machine, golden/live case loaders, retry/fallback (implemented, Phase 6-7, 9)
   policies/                     ← action-risk classification, config, tool-authorization chain, idempotency-aware Decision/AuditEvent/HumanReview gateway (implemented, Phase 7, 9)
   security/                     ← centralized PII/secret redaction layer (implemented, Phase 8)
-  monitoring/
-                               ← package skeleton only; documents which phase fills it in (Phase 13)
+  monitoring/                   ← Prometheus metrics + custom tracer + GET /metrics wiring (implemented, Phase 13)
 
 alembic/                       ← migrations (implemented, Phase 2-3, 9) — env.py reads
                                   src.config.settings + src.models.Base.metadata
-tests/unit/                    ← 116 passing tests (10 Phase 1 + 7 Phase 2 + 3 Phase 3 + 5 Phase 4 + 13 Phase 5 + 10 Phase 6 + 20 Phase 7 − 4 superseded, moved to tests/security/, + 18 Phase 10 API tests + 20 Phase 11 evaluation tests + 14 Phase 12 demo tests)
+infrastructure/                 ← Prometheus scrape/alert config + Grafana provisioning (Phase 13) —
+                                  optional docker-compose `monitoring` profile, `make monitoring-up`
+tests/unit/                    ← 131 passing tests (10 Phase 1 + 7 Phase 2 + 3 Phase 3 + 5 Phase 4 + 13 Phase 5 + 10 Phase 6 + 20 Phase 7 − 4 superseded, moved to tests/security/, + 18 Phase 10 API tests + 20 Phase 11 evaluation tests + 14 Phase 12 demo tests + 15 Phase 13 metrics/tracing tests)
 tests/security/                ← 24 passing tests (Phase 8: redaction + red-team/adversarial suite)
 tests/reliability/             ← 23 passing tests (Phase 9: retry/fallback, idempotency, DB-timeout)
 data/models/                   ← trained model artifacts (git-ignored — binary)
@@ -138,8 +139,9 @@ pyproject.toml, uv.lock, Dockerfile, docker-compose.yml, Makefile,
 Repository initialization, Phase 1 — Foundation, Phase 2 — Domain, Phase 3 — Ingestion
 (sample mode), Phase 4 — Fraud ML, Phase 5 — Evidence Engine, Phase 6 — AI Agent /
 Orchestration, Phase 7 — Policy Engine, Phase 8 — Security Hardening, Phase 9 — Reliability,
-Phase 10 — UI, Phase 11 — Evaluation, and Phase 12 — Demo are all done (`docs/project-status.md`).
-`infrastructure/terraform/` and everything else in `docs/implementation-roadmap.md` Phases 13+
+Phase 10 — UI, Phase 11 — Evaluation, Phase 12 — Demo, and Phase 13 — Observability are all done
+(`docs/project-status.md`).
+`infrastructure/terraform/` and everything else in `docs/implementation-roadmap.md` Phases 14+
 do not exist yet — do not create empty placeholder directories for a phase before it actually
 starts; the existing `src/` subpackages that are still just markers document this explicitly in
 their own docstrings. A `--full` ingestion run (the entire ~19M-row dataset, not just the
@@ -205,14 +207,31 @@ falsifiable assertion per scenario (not a prose-matching grader against the gold
 documented convention) and added the previously-deferred `policy_rejection.json` fixture
 (Scenario L), extending `golden_case_loader.py` to read `case_status`/`transaction_type` from a
 fixture so it can exercise the Policy Engine's case-eligibility denial path.
+**Phase 13's `src/monitoring/` wires real Prometheus metrics (`GET /metrics`) and a lightweight
+custom tracer** (`src/monitoring/tracing.py` — not the OpenTelemetry SDK this file used to list,
+see § 5 and `docs/decisions/ADR-0001-tracing-without-opentelemetry.md`) into every LLM call, tool
+authorization, and HTTP request, plus an optional Prometheus/Grafana docker-compose profile
+(`make monitoring-up`). **Fixed, live-verified, the Phase 10-documented gap** where
+`AuditEvent.correlation_id` was always `None` — a real case created through the API was fully
+reconstructed from its trace spans (grep by `trace_id`) plus one `audit_events` query by the same
+correlation ID, with no raw PII needed (`src/monitoring/README.md` § Incident reconstruction).
+**Two real bugs found and fixed while verifying this phase**: a database-unreachable timeout
+that `connect_timeout` alone didn't actually bound (DNS resolution ahead of the TCP connect took
+as long as ~60s on this machine), and a metrics-collector duplicate-registration bug that
+serialized that latency N times into one scrape — both in `src/monitoring/metrics.py`, detailed
+in `src/monitoring/README.md`.
 
-## 5. Confirmed technology stack (planned, not yet implemented)
+## 5. Confirmed technology stack (mostly implemented; a few pieces below remain planned)
 
 Backend: Python 3.12+, FastAPI, Pydantic, SQLAlchemy, PostgreSQL.
-AI: explicit-state-machine orchestration (LangGraph or equivalent), provider-agnostic
+AI: explicit-state-machine orchestration (hand-rolled, `src/orchestration/flow.py` — not
+LangGraph; a framework was never actually needed), provider-agnostic
 `LLMClient` (Claude / OpenAI-compatible / mock), structured outputs, tool calling, RAG with
 pgvector. ML: scikit-learn, XGBoost/LightGBM, SHAP. Data tooling: pandas/polars, DuckDB for
-local analytics over the LATAM Bank dataset. Observability: OpenTelemetry, Prometheus, Grafana.
+local analytics over the LATAM Bank dataset. Observability: Prometheus + Grafana
+(`IMPLEMENTED`, Phase 13, `src/monitoring/`); tracing is a small custom recorder, not the
+OpenTelemetry SDK this line used to list — see
+`docs/decisions/ADR-0001-tracing-without-opentelemetry.md`.
 Testing: pytest, pytest-asyncio. Quality: Ruff, mypy, pre-commit. Messaging: Kafka-compatible
 (Redpanda for local dev), introduced only if a phase actually needs asynchronous event
 processing — do not add it speculatively.
@@ -345,6 +364,14 @@ uv run pytest tests/unit/test_evaluation.py -q   # offline, no DATABASE_URL, no 
 # DATABASE_URL, no API key:
 uv run python -m demo.run
 uv run pytest tests/unit/test_demo.py -q
+
+# Observability (docs/project-status.md § Phase 13 detail; src/monitoring/README.md) — metrics/
+# tracing unit tests are fully offline; /metrics needs the API running (same DATABASE_URL
+# override as UI/API above); the monitoring profile needs Docker:
+uv run pytest tests/unit/test_metrics.py tests/unit/test_tracing.py -q
+curl http://localhost:8080/metrics
+make monitoring-up      # Prometheus :9090, Grafana :3001 (admin/admin) — optional, local-only
+make monitoring-down
 ```
 
 `Makefile` mirrors these as `make install|lint|typecheck|test|docker-up|docker-down`, but
