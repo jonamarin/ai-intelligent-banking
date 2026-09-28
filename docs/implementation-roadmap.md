@@ -342,6 +342,8 @@ scrape — both detailed in `src/monitoring/README.md`. Full detail:
 
 ## Phase 14 — Deployment Readiness (documentation only for this competition)
 
+`IMPLEMENTED` (see `docs/project-status.md` § Phase 14 detail).
+
 **Objective:** an honest account of what remains before real deployment. **Scope:** document
 (not build) container/infra requirements, rollback plan, operational readiness checklist,
 capacity limits, monitoring plan, access-control plan, data-retention plan, remaining
@@ -353,3 +355,14 @@ phase, ever, without explicit user authorization for that specific action
 `prompt.md` § 58 ("What happens if...?"), either "implemented, see X" or "documented gap, see
 Y" — never silence. **Risks:** none technical; the risk is skipping the honesty requirement
 under demo-day pressure.
+
+**Delivered as:** `docs/final-report.md` (the `prompt.md` § 64 report, all 13 required sections,
+plus a "Production readiness" section answering every § 58 item — the exit criterion, met
+explicitly, item by item, never silently) and `docs/deployment-readiness.md` (the detailed
+infra/rollback/operational-readiness/capacity/monitoring/access-control/retention gap analysis
+with a concrete, dependency-ordered remaining-work list). Documentation only, as scoped — no
+production action was taken. While writing it, found and fixed one more narrow instance of a
+correlation-ID gap Phase 13 had already fixed elsewhere (`src/evidence/persist.py`, the same
+pattern as `src/policies/gateway.py`) and corrected two stale forward-looking docs
+(`docs/api-contracts.md`'s `GET /metrics` status, `docs/architecture.md`'s pre-implementation
+header). Full detail: `docs/project-status.md` § Phase 14 detail.

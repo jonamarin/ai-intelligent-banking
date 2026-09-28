@@ -23,6 +23,7 @@ from sqlalchemy.engine import Engine
 
 from src.evidence.graph import EvidenceGraph
 from src.models import AuditEvent, Evidence, FraudCase
+from src.monitoring import tracing
 from src.security.redaction import redact_value
 
 
@@ -66,7 +67,7 @@ def persist_evidence_graph(engine: Engine, graph: EvidenceGraph) -> None:
                 event_type="evidence.graph.created",
                 case_id=graph.case_id,
                 decision_id=None,
-                correlation_id=None,
+                correlation_id=tracing.current_trace_id(),
                 payload=redact_value(_audit_payload(graph)),
                 created_at=dt.datetime.now(dt.UTC),
             )

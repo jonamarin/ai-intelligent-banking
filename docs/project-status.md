@@ -4,17 +4,20 @@ Owns: verified current implementation state. This document must never represent 
 functionality as implemented. Update it whenever a meaningful implementation phase
 (`docs/implementation-roadmap.md`) completes, changes, or blocks.
 
-**Last meaningful update:** 2026-09-28 (Phase 13 — Observability implemented and verified).
+**Last meaningful update:** 2026-09-28 (Phase 14 — Deployment Readiness: `docs/final-report.md`
+and `docs/deployment-readiness.md` written; documentation only).
 **Last validation:** 2026-09-28 — actually run, not just inspected: `uv run ruff check .`
-(clean), `uv run mypy src evaluation demo` (clean), `uv run pytest` (178/178 passed), and a full
-live verification against a real Postgres + Docker stack: a case created via the API was
-reconstructed from its trace spans and one `audit_events` query by a shared correlation ID, and
-the optional `monitoring` docker-compose profile (Prometheus + Grafana) was brought up, verified
-scraping and alerting on real metrics, and torn down (§ Phase 13 detail below).
+(clean), `uv run mypy src evaluation demo` (clean, 86 files), `uv run pytest` (178/178 passed).
+Phase 13's own live verification (a case reconstructed from trace spans + one `audit_events`
+query by a shared correlation ID; the optional `monitoring` docker-compose profile brought up,
+verified scraping/alerting, and torn down) still stands — Phase 14 added no new runtime code
+beyond two narrow `correlation_id` fixes (§ Phase 14 detail below), re-verified by the same
+`pytest` run above.
 
 ## Current phase
 
-Phase 13 (Observability) complete. This repository now contains: the original master prompt
+Phase 14 (Deployment Readiness) complete — all 14 roadmap phases now implemented. This
+repository now contains: the original master prompt
 (`prompt.md`), the competition brief (`project_presentation.txt`), the LATAM Bank dataset
 documentation (two PDFs at the repository root), the raw LATAM Bank dataset itself
 (`data/raw/`, git-ignored, ~5.0 GB — `docs/data-lineage.md` § 1), the Claude Code operating
@@ -30,10 +33,12 @@ comparing Rules-only, Fraud-ML-only, LLM-only, and the Hybrid pipeline on one co
 sample plus fairness, LLM/agent, reliability, and business metrics (Phase 11, the last honestly
 `"not available"`, never fabricated — see `evaluation/README.md`), `demo/` — all 12
 `docs/demo-script.md` scenarios runnable and graded on demand (`make demo` or
-`uv run python -m demo.run`), fully offline (Phase 12, see `demo/README.md`), and now
-`src/monitoring/` — real Prometheus metrics, a lightweight custom tracer, and an optional
-Grafana/Prometheus stack, all verified live against a real Postgres. See
-`src/monitoring/README.md`.
+`uv run python -m demo.run`), fully offline (Phase 12, see `demo/README.md`), `src/monitoring/`
+— real Prometheus metrics, a lightweight custom tracer, and an optional Grafana/Prometheus
+stack, all verified live against a real Postgres (Phase 13, see `src/monitoring/README.md`),
+and now `docs/final-report.md` + `docs/deployment-readiness.md` (Phase 14, documentation only)
+— the `prompt.md` § 64 engineering report and an honest "what's left before production"
+account, respectively.
 **A real, non-obvious finding from actually running the comparison**: "LLM only" and "Hybrid"
 produce identical flagged outcomes on the sample — the Policy Engine never changes *which*
 action gets proposed, only *whether human approval is independently required*. Its actual
@@ -59,7 +64,7 @@ exactly why this project reports it as its own line rather than only the aggrega
 | 11 — Evaluation | IMPLEMENTED — see § Phase 11 detail below (all four `docs/evaluation-plan.md` § 10 approaches measured on one live, 152-case common held-out sample; business metrics honestly "not available," not fabricated) |
 | 12 — Demo | IMPLEMENTED — see § Phase 12 detail below (all 12 `docs/demo-script.md` scenarios runnable and graded PASS/PARTIAL/FAIL, offline; 9 PASS, 3 PARTIAL, 0 FAIL) |
 | 13 — Observability | IMPLEMENTED — see § Phase 13 detail below (real metrics/traces/audit-log correlation verified live against a real Postgres; incident-reconstruction exit criterion demonstrated end-to-end; two real bugs found and fixed) |
-| 14 — Deployment Readiness (docs) | PARTIALLY_IMPLEMENTED — `docs/architecture.md`, `docs/security-model.md`, and this document lay out what deployment readiness requires; no actual readiness checklist has been executed because nothing is deployed |
+| 14 — Deployment Readiness (docs) | IMPLEMENTED — see § Phase 14 detail below (documentation only, per its own scope — `docs/final-report.md` and `docs/deployment-readiness.md` written; still no actual deployment, none authorized) |
 
 ## Completed
 
@@ -79,7 +84,8 @@ exactly why this project reports it as its own line rather than only the aggrega
   **Phase 4 — Fraud ML**, **Phase 5 — Evidence Engine**, **Phase 6 — AI Agent /
   Orchestration**, **Phase 7 — Policy Engine**, **Phase 8 — Security Hardening**,
   **Phase 9 — Reliability**, **Phase 10 — UI**, **Phase 11 — Evaluation**,
-  **Phase 12 — Demo**, and **Phase 13 — Observability**, detailed below.
+  **Phase 12 — Demo**, **Phase 13 — Observability**, and **Phase 14 — Deployment Readiness**,
+  detailed below.
 
 ### Phase 1 detail
 
@@ -852,6 +858,44 @@ every table, same as the Phase 3 verification methodology. Date range: 2026-03-2
   authentication (acceptable for a local-only prototype with no production deployment,
   `CLAUDE.md` § 7). Full detail: `src/monitoring/README.md`.
 
+### Phase 14 detail
+
+- `docs/final-report.md`: the concise `prompt.md` § 64 engineering report (Architecture, AI
+  components, ML components, Deterministic components, Human oversight, Security, Privacy,
+  Fairness, Reliability, Evaluation, Reproducibility, Known limitations, Demo), plus a
+  "Production readiness" section answering every `prompt.md` § 58 "what happens if..." item as
+  either "implemented, see X" or "documented gap, see Y" — this phase's own stated exit
+  criterion (`docs/implementation-roadmap.md`). Every claim in it cites the specific test, file,
+  or prior phase's verification that backs it — it synthesizes facts already established across
+  Phases 1–13, not new claims.
+- `docs/deployment-readiness.md`: the detailed "what's left before production" account
+  (`docs/implementation-roadmap.md`'s own phrase) — container/infra requirements, a rollback
+  plan, an operational readiness checklist, capacity limits, a monitoring plan, an
+  access-control plan, a data-retention plan, and a concrete, dependency-ordered remaining-work
+  list. Documentation only — no production action, deployment, credential, or infrastructure
+  change was taken anywhere in writing it (`CLAUDE.md` § 7, `.claude/rules/infrastructure.md`).
+- **Two more narrow instances of a gap Phase 13 had already found and fixed, caught while
+  synthesizing the report, not by inspection**: Phase 13 fixed `src/policies/gateway.py`'s
+  `AuditEvent.correlation_id` (always `None`) but didn't touch `src/evidence/persist.py`'s
+  identical pattern, since Phase 13's own live verification (a case created through the API)
+  never exercised that write path (`persist_evidence_graph` is called by golden-case/background
+  evidence-graph builds, not the request/response cycle the live verification drove). Fixed the
+  same way — `tracing.current_trace_id()` instead of a hardcoded `None`. Also corrected two
+  stale forward-looking docs found in the same pass: `docs/api-contracts.md` still described
+  `GET /metrics` as `PROPOSED` and the correlation-ID gap as open (both closed in Phase 13, just
+  never reflected back into that document), and `docs/architecture.md`'s header still claimed
+  "nothing described here is implemented yet" despite 13 phases having since implemented most of
+  it.
+- **Verified**: `uv run ruff check .` (clean), `uv run mypy src evaluation demo` (clean, 86
+  files), `uv run pytest` (178/178 passed, including the two files touched by the
+  `correlation_id` fix above) — no regression from a documentation-only phase incidentally
+  touching two source files.
+- **Not done in this phase, by design:** no actual deployment, infrastructure provisioning, or
+  production credential of any kind — explicitly out of scope for this phase and for this
+  project (`CLAUDE.md` § 7). `docs/deployment-readiness.md` § 8 lists the concrete remaining
+  work in dependency order for a future team that decides to deploy this project; none of it is
+  started here.
+
 ## In progress
 
 Nothing.
@@ -897,7 +941,8 @@ Everything under "Status by roadmap phase" marked `NOT_IMPLEMENTED` above.
   — the dataset has no persistent device-fingerprint column). Known limitations: IP-based
   collisions across customers on shared networks/NAT, and a customer's own IP changing
   registering as a "new device." Documented in the module itself, not hidden.
-- No frontend framework has been chosen (`docs/architecture.md` § 15, `OPEN QUESTION`).
+- Frontend framework was decided in Phase 10: server-rendered Jinja2 templates + vanilla JS
+  (`src/api/ui.py`), no separate Node/npm toolchain (`docs/architecture.md` § 15).
 - No business-approved risk thresholds, cost coefficients, or approval-matrix cells exist
   anywhere in this project — every number in `docs/decision-policy.md` and
   `docs/human-oversight.md` is illustrative/`PROPOSED`, not approved policy.

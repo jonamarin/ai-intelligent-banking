@@ -3,9 +3,9 @@
 Owns: system/API/event boundaries. See `docs/architecture.md` § 6 for the tool-authorization
 flow these endpoints ultimately gate, and `docs/security-model.md` for the trust model.
 
-**Status: Phase 10 implements the core case endpoints (`src/api/cases.py`); `/messages`,
-`/evaluate`, and `/metrics` remain `PROPOSED`.** This document defines the intended contract so
-implementation doesn't have to re-derive it from `prompt.md`.
+**Status: Phase 10 implements the core case endpoints (`src/api/cases.py`); Phase 13 adds
+`GET /metrics`. `/messages` and `/evaluate` remain `PROPOSED`.** This document defines the
+intended contract so implementation doesn't have to re-derive it from `prompt.md`.
 
 ## 1. Endpoints
 
@@ -21,8 +21,8 @@ implementation doesn't have to re-derive it from `prompt.md`.
 | `POST /api/v1/cases/{case_id}/approve` | Human approval of a pending action | **IMPLEMENTED as `POST /cases/{case_id}/review`** with `{"action": "approve"}` — one handler for both approve/reject rather than two near-duplicates, idempotency-key-protected (`src/policies/gateway.py`) |
 | `POST /api/v1/cases/{case_id}/reject` | Human rejection of a pending action | **IMPLEMENTED as `POST /cases/{case_id}/review`** with `{"action": "reject"}` — see above |
 | `POST /api/v1/cases/session` | Set the trusted-test-identity role cookie (`src/api/deps.py`) | **IMPLEMENTED**, Phase 10 addition not in the original proposed table — no real auth system exists (`docs/security-model.md` § 3), so this stands in for it, honestly labeled everywhere it's used |
-| `POST /api/v1/evaluate` | Trigger an evaluation run | PROPOSED (Phase 11) |
-| `GET /api/v1/metrics` | Metrics endpoint (Prometheus-compatible) | PROPOSED (Phase 13) |
+| `POST /api/v1/evaluate` | Trigger an evaluation run | PROPOSED — `evaluation/run.py` is a CLI, not an HTTP trigger (`evaluation/README.md`) |
+| `GET /metrics` | Metrics endpoint (Prometheus-compatible) | **IMPLEMENTED** (`src/api/main.py`, Phase 13) — deliberately **not** under `/api/v1/`: this follows the standard, tooling-expected Prometheus convention (`GET /metrics` at the root) rather than this project's own versioned business-API prefix, since Prometheus scrape configs assume that path by convention (`infrastructure/prometheus/prometheus.yml`) |
 
 The implemented `/health` endpoint also already demonstrates two of the cross-cutting
 requirements below ahead of the rest of the API: correlation-ID propagation (§ 2) and
@@ -52,9 +52,11 @@ endpoint accepts unvalidated input.
   to scope by yet, since the trusted-test-identity abstraction has no per-customer login, only
   a role. Honestly reported, not silently claimed.
 - **Correlation IDs:** every request carries/generates a correlation ID propagated through
-  traces (`src/api/main.py`'s middleware, Phase 1) — **not yet propagated into audit events**
-  (`src/policies/gateway.py`/`src/evidence/persist.py` always write `correlation_id=None`); a
-  known, honestly-reported gap, not claimed as done.
+  traces (`src/api/main.py`'s middleware, Phase 1) and, since Phase 13, into every audit event
+  the request produces — both `src/policies/gateway.py` and `src/evidence/persist.py` now read
+  the live trace ID (`src/monitoring/tracing.current_trace_id()`) instead of always writing
+  `correlation_id=None` — verified live end-to-end, `src/monitoring/README.md` § Incident
+  reconstruction.
 - **Idempotency:** `POST /cases/{case_id}/review` (approve and reject both) requires an
   idempotency key so a retried request cannot double-execute (`docs/architecture.md` § 11) —
   **IMPLEMENTED**, Phase 9's `action_executions` mechanism, reused here

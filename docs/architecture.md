@@ -2,8 +2,11 @@
 
 Owns: how the system is structured. See `docs/domain-model.md` for entities, `docs/
 decision-policy.md` for the authorization logic, `docs/product-requirements.md` for what it's
-for. Everything in this document is `PROPOSED` — nothing described here is implemented yet;
-see `docs/project-status.md` for verified state.
+for. This document was originally written pre-implementation, entirely `PROPOSED`; as of Phase
+13 (`docs/implementation-roadmap.md`), most of it is built and verified — `docs/project-status.md`
+is still the authoritative source for exactly what's real, phase by phase; this document
+describes the target shape the implementation follows, not a claim that every detail below is
+implemented verbatim (§ 7's event system and § 12's load-tested numbers, for example, are not).
 
 ## 1. System context
 

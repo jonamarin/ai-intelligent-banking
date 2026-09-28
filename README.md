@@ -5,7 +5,9 @@ dispute intake and fraud investigation** for a synthetic LATAM retail bank. Buil
 Factored Datathon 2026 (`project_presentation.txt`), following the technical vision in
 `prompt.md`.
 
-> **Status: Phase 13 (Observability) complete.** This repository contains the project's Claude
+> **Status: all 14 roadmap phases complete** (Phase 14 — Deployment Readiness — is
+> documentation only: `docs/final-report.md`, `docs/deployment-readiness.md`; no production
+> action was taken). This repository contains the project's Claude
 > Code operating system, a working application foundation, a complete, migrated PostgreSQL
 > schema, a verified ingestion pipeline, a trained, evaluated fraud model with an
 > honestly-reported result (**it performs near chance on the currently loaded sample** — a real
@@ -274,13 +276,17 @@ This repository is set up to be worked on by Claude Code sessions with persisten
 | What's actually done right now? | `docs/project-status.md` |
 | What will the demo show? | `docs/demo-script.md` |
 | How are significant decisions recorded? | `docs/decisions/README.md` |
+| What's the end-of-project engineering summary? | `docs/final-report.md` |
+| What's left before a real deployment? | `docs/deployment-readiness.md` |
 
 ## 13. Limitations
 
-See `docs/project-status.md` § Known limitations for the current, maintained list (frontend
-framework undecided, no business-approved thresholds exist anywhere in this project,
-Portuguese-language gap, `make` not installed on the dev machine this was built on). This
-project is a ten-day/hackathon-scale prototype
+See `docs/project-status.md` § Known limitations for the current, maintained list (no
+business-approved thresholds exist anywhere in this project, the Fraud ML score isn't wired into
+live orchestration, no real authentication system exists, Portuguese-language gap, `make` not
+installed on the dev machine this was built on) — also summarized in `docs/final-report.md` §
+Known limitations, with a full production-readiness gap analysis in
+`docs/deployment-readiness.md`. This project is a ten-day/hackathon-scale prototype
 demonstrating production-readiness *thinking* — it is not, and does not claim to be, a
 production banking system (`docs/product-requirements.md` § 10).
 
@@ -288,4 +294,6 @@ production banking system (`docs/product-requirements.md` § 10).
 
 The full phased plan, with objectives, deliverables, tests, and exit criteria per phase, is
 `docs/implementation-roadmap.md` (14 phases, foundation through deployment-readiness
-documentation).
+documentation — all 14 now `IMPLEMENTED`). For what comes after this submission,
+`docs/deployment-readiness.md` § 8 lays out the concrete, dependency-ordered work remaining
+before any real deployment.

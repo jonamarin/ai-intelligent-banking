@@ -98,6 +98,8 @@ docs/
   implementation-roadmap.md   ← phased build plan for a future session
   project-status.md           ← what is actually implemented right now
   demo-script.md               ← deterministic demo scenarios
+  final-report.md              ← Phase 14: the concise prompt.md § 64 engineering report
+  deployment-readiness.md      ← Phase 14: honest "what's left before production" (docs only)
   decisions/                   ← ADRs
 
 evaluation/                    ← system-level evaluation (implemented, Phase 11) — `python -m evaluation.run`
@@ -139,12 +141,17 @@ pyproject.toml, uv.lock, Dockerfile, docker-compose.yml, Makefile,
 Repository initialization, Phase 1 — Foundation, Phase 2 — Domain, Phase 3 — Ingestion
 (sample mode), Phase 4 — Fraud ML, Phase 5 — Evidence Engine, Phase 6 — AI Agent /
 Orchestration, Phase 7 — Policy Engine, Phase 8 — Security Hardening, Phase 9 — Reliability,
-Phase 10 — UI, Phase 11 — Evaluation, Phase 12 — Demo, and Phase 13 — Observability are all done
-(`docs/project-status.md`).
-`infrastructure/terraform/` and everything else in `docs/implementation-roadmap.md` Phases 14+
-do not exist yet — do not create empty placeholder directories for a phase before it actually
-starts; the existing `src/` subpackages that are still just markers document this explicitly in
-their own docstrings. A `--full` ingestion run (the entire ~19M-row dataset, not just the
+Phase 10 — UI, Phase 11 — Evaluation, Phase 12 — Demo, Phase 13 — Observability, and Phase 14 —
+Deployment Readiness are all done (`docs/project-status.md`). Phase 14 is documentation only,
+per its own scope (`docs/implementation-roadmap.md`) — `docs/final-report.md` (the concise
+`prompt.md` § 64 report, including the § 58 "what happens if..." checklist) and
+`docs/deployment-readiness.md` (the detailed infra/rollback/access-control/retention gap
+analysis); no production infrastructure was created or touched.
+`infrastructure/terraform/` and every deployment mechanism `docs/deployment-readiness.md`
+describes as missing (§ 1–8 of that document) do not exist yet — do not create empty placeholder
+directories for a phase before it actually starts; the existing `src/` subpackages that are
+still just markers document this explicitly in their own docstrings. A `--full` ingestion run
+(the entire ~19M-row dataset, not just the
 verified recent-date sample) has also not been done — see `src/ingestion/README.md` § Sample vs.
 full mode before attempting it. **The trained fraud model performs near chance on the currently
 loaded sample — a real, verified finding, not a bug** (`docs/project-status.md` § Phase 4
@@ -220,6 +227,18 @@ that `connect_timeout` alone didn't actually bound (DNS resolution ahead of the 
 as long as ~60s on this machine), and a metrics-collector duplicate-registration bug that
 serialized that latency N times into one scrape — both in `src/monitoring/metrics.py`, detailed
 in `src/monitoring/README.md`.
+**Phase 14 (documentation only, `docs/implementation-roadmap.md`) wrote the two deliverables
+that phase's own scope calls for**: `docs/final-report.md` (the concise `prompt.md` § 64
+engineering report — Architecture through Demo, plus a section answering every `prompt.md` § 58
+"what happens if..." item as "implemented, see X" or "documented gap, see Y", this phase's own
+exit criterion) and `docs/deployment-readiness.md` (the detailed infra/rollback/operational-
+readiness/capacity/monitoring/access-control/retention gap analysis, with a concrete, ordered
+"remaining deployment work" list). No production action, deployment, or infrastructure change
+was taken. While synthesizing the report, one more narrow instance of the same Phase 10 gap
+Phase 13 had already fixed in `src/policies/gateway.py` was found and fixed the same way:
+`src/evidence/persist.py`'s `AuditEvent.correlation_id` was still always `None` (evidence-graph
+writes are outside the request/response cycle golden cases and background builds use, so
+Phase 13's own live verification hadn't exercised that specific write path).
 
 ## 5. Confirmed technology stack (mostly implemented; a few pieces below remain planned)
 
@@ -401,5 +420,7 @@ authorized action), `docs/security-model.md` (threats/trust boundaries), `docs/g
 evaluation), `docs/implementation-roadmap.md` (build sequence), `docs/project-status.md`
 (verified current state), `docs/data-governance.md` (data-use rules), `docs/data-lineage.md`
 (data movement/transformation), `docs/observability.md` (telemetry), `docs/api-contracts.md`
-(API/event boundaries), `docs/demo-script.md` (demo scenarios), `docs/decisions/README.md`
-(ADR process and precedence rules).
+(API/event boundaries), `docs/demo-script.md` (demo scenarios), `docs/final-report.md` (the
+concise, end-of-project engineering summary), `docs/deployment-readiness.md` (honest
+production-readiness gap analysis), `docs/decisions/README.md` (ADR process and precedence
+rules).
