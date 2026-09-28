@@ -101,9 +101,12 @@ docs/
   decisions/                   ← ADRs
 
 evaluation/                    ← system-level evaluation (implemented, Phase 11) — `python -m evaluation.run`
-  golden_cases/                ← synthetic scenario fixtures + schema
+  golden_cases/                ← synthetic scenario fixtures + schema (11 fixtures, Scenarios A-L)
   sample.py, baselines.py, fairness.py, report.py, run.py
                                ← Rules/ML/LLM/Hybrid baseline comparison, fairness, full report
+
+demo/                           ← scripted, graded demo-script.md walkthrough (implemented, Phase 12)
+  scenarios.py, run.py          ← per-scenario PASS/PARTIAL/FAIL assertions; `python -m demo.run` / `make demo`
 
 src/                           ← application code (Phase 1+, docs/project-status.md)
   config/                      ← settings + structured logging (implemented)
@@ -123,7 +126,7 @@ src/                           ← application code (Phase 1+, docs/project-stat
 
 alembic/                       ← migrations (implemented, Phase 2-3, 9) — env.py reads
                                   src.config.settings + src.models.Base.metadata
-tests/unit/                    ← 102 passing tests (10 Phase 1 + 7 Phase 2 + 3 Phase 3 + 5 Phase 4 + 13 Phase 5 + 10 Phase 6 + 20 Phase 7 − 4 superseded, moved to tests/security/, + 18 Phase 10 API tests + 20 Phase 11 evaluation tests)
+tests/unit/                    ← 116 passing tests (10 Phase 1 + 7 Phase 2 + 3 Phase 3 + 5 Phase 4 + 13 Phase 5 + 10 Phase 6 + 20 Phase 7 − 4 superseded, moved to tests/security/, + 18 Phase 10 API tests + 20 Phase 11 evaluation tests + 14 Phase 12 demo tests)
 tests/security/                ← 24 passing tests (Phase 8: redaction + red-team/adversarial suite)
 tests/reliability/             ← 23 passing tests (Phase 9: retry/fallback, idempotency, DB-timeout)
 data/models/                   ← trained model artifacts (git-ignored — binary)
@@ -135,8 +138,8 @@ pyproject.toml, uv.lock, Dockerfile, docker-compose.yml, Makefile,
 Repository initialization, Phase 1 — Foundation, Phase 2 — Domain, Phase 3 — Ingestion
 (sample mode), Phase 4 — Fraud ML, Phase 5 — Evidence Engine, Phase 6 — AI Agent /
 Orchestration, Phase 7 — Policy Engine, Phase 8 — Security Hardening, Phase 9 — Reliability,
-Phase 10 — UI, and Phase 11 — Evaluation are all done (`docs/project-status.md`).
-`infrastructure/terraform/` and everything else in `docs/implementation-roadmap.md` Phases 12+
+Phase 10 — UI, Phase 11 — Evaluation, and Phase 12 — Demo are all done (`docs/project-status.md`).
+`infrastructure/terraform/` and everything else in `docs/implementation-roadmap.md` Phases 13+
 do not exist yet — do not create empty placeholder directories for a phase before it actually
 starts; the existing `src/` subpackages that are still just markers document this explicitly in
 their own docstrings. A `--full` ingestion run (the entire ~19M-row dataset, not just the
@@ -192,6 +195,16 @@ human approval is independently required*), so its actual effect is a separate
 `policy_engine_override_rate` metric (**measured: 19/152, 12.5%**), not visible in the
 precision/recall comparison alone — see `evaluation/README.md`. Business metrics are honestly
 `"not available"` (no approved cost coefficients exist), never a fabricated dollar figure.
+**Phase 12's `python -m demo.run` (`make demo`) runs and grades all 12
+`docs/demo-script.md` scenarios offline** — `demo/scenarios.py` holds one hand-written,
+falsifiable assertion per scenario (not a prose-matching grader against the golden cases' own
+`expected_*` fields — same reasoning Phase 6 already established). Result: 9/12 `PASS`, 3/12
+`PARTIAL` (each a real, already-documented, non-unsafe limitation — see `demo/README.md`), 0
+`FAIL`. Building it surfaced and fixed a real fixture bug (`missing_data.json` used a fabricated
+`confidence: 0.0` instead of `null` for "Unknown," contradicting `src/evidence/graph.py`'s own
+documented convention) and added the previously-deferred `policy_rejection.json` fixture
+(Scenario L), extending `golden_case_loader.py` to read `case_status`/`transaction_type` from a
+fixture so it can exercise the Policy Engine's case-eligibility denial path.
 
 ## 5. Confirmed technology stack (planned, not yet implemented)
 
@@ -266,7 +279,7 @@ Real, verified commands as of Phase 1 (`docs/project-status.md`):
 ```
 uv sync                 # install dependencies (creates .venv)
 uv run ruff check .     # lint
-uv run mypy src evaluation   # type check (evaluation/ added Phase 11 — see CI workflow)
+uv run mypy src evaluation demo   # type check (evaluation/ added Phase 11, demo/ added Phase 12 — see CI workflow)
 uv run pytest           # unit tests (fast, offline — model tests use in-memory SQLite)
 docker compose build    # build the api image
 docker compose up -d db # start db only (localhost:5433) — needed for the alembic commands below
@@ -327,6 +340,11 @@ uv run pytest tests/unit/test_api_cases.py -q   # offline, no DATABASE_URL, no A
 # src.ml.train first):
 DATABASE_URL="postgresql+psycopg://banking:banking@localhost:5433/banking_ai" uv run python -m evaluation.run
 uv run pytest tests/unit/test_evaluation.py -q   # offline, no DATABASE_URL, no API key
+
+# Demo (docs/project-status.md § Phase 12 detail; demo/README.md) — fully offline, no
+# DATABASE_URL, no API key:
+uv run python -m demo.run
+uv run pytest tests/unit/test_demo.py -q
 ```
 
 `Makefile` mirrors these as `make install|lint|typecheck|test|docker-up|docker-down`, but

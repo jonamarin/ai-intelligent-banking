@@ -142,7 +142,7 @@ def test_irreversible_action_requires_human_approval_end_to_end() -> None:
 def test_every_golden_case_runs_without_raising() -> None:
     llm_client = MockLLMClient()
     cases = load_all_golden_cases()
-    assert len(cases) == 10
+    assert len(cases) == 11  # 10 since Phase 6 + policy_rejection.json (Scenario L, Phase 12)
     for case in cases:
         result = run_case(case, llm_client)
         assert result.case_id == case.case_id

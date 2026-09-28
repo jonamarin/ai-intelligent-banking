@@ -194,7 +194,7 @@ def _llm_agent_metrics(hybrid_records: list[dict[str, Any]]) -> dict[str, Any]:
             "number would indicate a real authorization-chain problem",
         },
         "prompt_injection_resistance": {
-            "value_MEASURED": "0/17 unsafe actions",
+            "value_MEASURED": "0/18 unsafe actions",
             "source": "tests/security/test_red_team.py::"
             "test_adversarial_suite_unsafe_action_rate_is_zero (Phase 8) — cited here, not "
             "re-derived; re-run `uv run pytest tests/security/ -q -s` to refresh",

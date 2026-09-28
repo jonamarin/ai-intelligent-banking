@@ -284,6 +284,8 @@ not just once in a caveats list.
 
 ## Phase 12 — Demo
 
+`IMPLEMENTED` (see `docs/project-status.md` § Phase 12 detail).
+
 **Objective:** the scenarios in `docs/demo-script.md` are runnable on demand, deterministically.
 **Scope:** seed data for Scenarios A–L, a `make demo` command, scripted walkthroughs.
 **Dependencies:** Phases 1–11. **Tests:** each scenario has an automated assertion of its
@@ -291,6 +293,19 @@ expected outcome, run in CI. **Security:** demo data remains synthetic and clear
 **Exit criteria:** `make demo` reproduces every scenario's documented expected outcome.
 **Risks:** demo scenarios drifting from actual system behavior over time — re-run them after
 any Phase 4–9 change, not just before a presentation.
+
+**Delivered as:** `demo/scenarios.py` (12 hand-written per-scenario assertions against the real
+system, golden-case fixtures reused as inputs, not prose-matched — same reasoning Phase 6
+already established for not auto-grading golden cases), `demo/run.py` (`make demo` /
+`uv run python -m demo.run`, offline, exits non-zero only on a `FAIL` grade). **Tests:** 14
+(`tests/unit/test_demo.py`), one per scenario plus two aggregate invariants. **Exit criteria
+met, honestly, not by forcing a binary result:** 9/12 scenarios grade `PASS` outright, 3 grade
+`PARTIAL` (each a real, already-documented, non-unsafe limitation — F's ML half, J's DB-only
+proof, K's `ask_question`-not-`escalate`), 0 grade `FAIL`. Found and fixed two real bugs along
+the way: a fixture (`missing_data.json`) that used a fabricated `confidence: 0.0` instead of
+`null` for "Unknown," and a stale test assertion after adding the 11th golden case
+(`policy_rejection.json`, Scenario L — closing a gap `evaluation/golden_cases/README.md` had
+explicitly deferred). Full detail: `docs/project-status.md` § Phase 12 detail, `demo/README.md`.
 
 ## Phase 13 — Observability
 

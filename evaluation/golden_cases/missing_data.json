@@ -15,7 +15,7 @@
     "note": "This transaction references a session_id with no corresponding digital_events rows (a documented dataset characteristic: a small percentage of orphaned foreign keys exist intentionally for testing -- see docs/data-lineage.md section 2)."
   },
   "evidence": [
-    {"type": "device_history", "direction": "neutral", "confidence": 0.0, "source": "digital_events: no rows found for the referenced session_id -- represented as Unknown, not as 'no device risk'"},
+    {"type": "device_history", "direction": "neutral", "confidence": null, "source": "digital_events: no rows found for the referenced session_id -- represented as Unknown (confidence=null), not as a fabricated zero-confidence 'no device risk' value"},
     {"type": "merchant_history", "direction": "supports_legitimate", "confidence": 0.5, "source": "merchant_category matches a category the customer has used before"}
   ],
   "missing_information": ["Device/session context for this transaction (orphaned reference)", "Customer's location at time of transaction"],

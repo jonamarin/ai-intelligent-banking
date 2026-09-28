@@ -58,6 +58,11 @@ def load_golden_case(path: Path) -> CaseInput:
         # what actually closes the high_value_transfer gap Phase 6 left honestly open.
         escalation_required=bool(detect_contradictions(items)),
         candidate_questions=_derive_candidate_questions(raw),
+        # Defaults "open" (every existing fixture but policy_rejection.json,
+        # Scenario L) — only that one fixture sets this to "resolved" to
+        # exercise the case-eligibility denial step
+        # (docs/guardrails.md § 3, src/policies/authorization.py).
+        case_status=facts.get("case_status", "open"),
         transaction_type=facts.get("transaction_type"),
         amount_usd=_usd_amount(facts, "amount", "currency"),
         requested_action=facts.get("requested_action"),

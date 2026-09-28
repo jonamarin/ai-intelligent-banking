@@ -48,11 +48,13 @@ case; use `null` or an empty list/object rather than omitting a field):
 | `dependency_failure.json` | LLM and fraud-model unavailability | Scenarios E, F |
 | `duplicate_action.json` | Same action submitted twice | Scenario J |
 | `human_escalation.json` | Policy-ambiguous case requiring a full case packet | Scenario K |
+| `policy_rejection.json` | Second action attempted on an already-resolved case | Scenario L |
 
-`policy_rejection` (Scenario L in `docs/demo-script.md`) is intentionally not a separate fixture
-here — it's better expressed as a follow-up action on `clear_fraud.json` (attempting a second
-dispute on an already-resolved case) once the orchestrator exists to sequence it; add
-`policy_rejection.json` at that point rather than fabricating a standalone case now.
+`policy_rejection.json` (Phase 12) sets `available_facts.case_status = "resolved"` — the one
+fixture that does — so `src/orchestration/golden_case_loader.py` builds a `CaseInput` whose
+`case_status` isn't the default `"open"`, exercising `src/policies/authorization.py`'s
+case-eligibility denial step. Added once the orchestrator existed to sequence it, per this
+file's own earlier note.
 
 ## Adding a case
 

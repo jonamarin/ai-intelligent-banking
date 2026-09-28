@@ -5,23 +5,26 @@ dispute intake and fraud investigation** for a synthetic LATAM retail bank. Buil
 Factored Datathon 2026 (`project_presentation.txt`), following the technical vision in
 `prompt.md`.
 
-> **Status: Phase 11 (Evaluation) complete.** This repository contains the project's Claude
+> **Status: Phase 12 (Demo) complete.** This repository contains the project's Claude
 > Code operating system, a working application foundation, a complete, migrated PostgreSQL
 > schema, a verified ingestion pipeline, a trained, evaluated fraud model with an
 > honestly-reported result (**it performs near chance on the currently loaded sample** — a real
 > finding, see `src/ml/README.md`, not a bug), a working Evidence Engine, a case orchestration
 > state machine, a real deterministic **Policy Engine** where **Irreversible/Critical actions
 > require human approval unconditionally, provably**, a centralized **PII/secret redaction
-> layer** plus an automated **red-team test suite** (**0/17 unsafe actions, measured**), real
+> layer** plus an automated **red-team test suite** (**0/18 unsafe actions, measured**), real
 > handling for LLM/database/RAG failure and a real **idempotency mechanism**, a real **JSON
 > API** plus a server-rendered **customer/analyst UI** verified live end-to-end in a real
-> browser, and now `python -m evaluation.run` (`docs/evaluation-plan.md`) — comparing
+> browser, `python -m evaluation.run` (`docs/evaluation-plan.md`) — comparing
 > **Rules-only, Fraud-ML-only, LLM-only, and the Hybrid pipeline** on one common held-out
-> sample, plus fairness metrics by country. **A real, non-obvious finding from actually running
-> it**: "LLM only" and "Hybrid" produce identical outcomes on the sample — the Policy Engine
-> never changes *which* action gets proposed, only *whether human approval is independently
-> required* — so its real, measured effect (**19/152 cases, 12.5%**, where the LLM alone
-> wouldn't have required approval but the Policy Engine did) is reported as its own metric,
+> sample, plus fairness metrics by country — and now `python -m demo.run` (`make demo`,
+> `docs/demo-script.md`), a fully offline, graded walkthrough of all 12 documented scenarios
+> (**9/12 PASS, 3/12 PARTIAL, 0/12 FAIL** — see `demo/README.md` for exactly what each `PARTIAL`
+> means and why). **A real, non-obvious finding from actually running the evaluation
+> comparison**: "LLM only" and "Hybrid" produce identical outcomes on the sample — the Policy
+> Engine never changes *which* action gets proposed, only *whether human approval is
+> independently required* — so its real, measured effect (**19/152 cases, 12.5%**, where the LLM
+> alone wouldn't have required approval but the Policy Engine did) is reported as its own metric,
 > not hidden inside a comparison table that can't show it. See `evaluation/README.md`.
 > **A bounded recent-date sample is loaded, not the full ~19M-row dataset** (the dev machine has
 > too little free RAM for that right now — see `src/ingestion/README.md`). **Genuine remaining
@@ -30,12 +33,13 @@ Factored Datathon 2026 (`project_presentation.txt`), following the technical vis
 > explicitly out of scope for this prototype (`docs/security-model.md` § 3); risk-band
 > fraud-probability thresholds aren't wired in because Phase 4's model score was never plumbed
 > into orchestration — which is also why "Hybrid" in the evaluation excludes the ML score and
-> says so everywhere it's reported; one of the four core demo scenarios (asking the customer a
-> clarifying question) isn't reachable live yet. The Evidence Engine's device fingerprint is a
-> documented heuristic proxy, and its direction/confidence values are illustrative, never
-> approved policy. See `docs/project-status.md` for the authoritative, up-to-date state. Every
-> claim in this README is labeled `Implemented`, `Planned`, `Partial`, or `Mocked` — treat
-> anything unlabeled as aspirational.
+> says so everywhere it's reported; one of the twelve demo scenarios (asking the customer a
+> clarifying question, live) isn't reachable outside the offline golden-case suite yet. The
+> Evidence Engine's device fingerprint is a documented heuristic proxy, and its
+> direction/confidence values are illustrative, never approved policy. See
+> `docs/project-status.md` for the authoritative, up-to-date state. Every claim in this README is
+> labeled `Implemented`, `Planned`, `Partial`, or `Mocked` — treat anything unlabeled as
+> aspirational.
 
 ## 1. Problem
 
@@ -94,13 +98,14 @@ CLAUDE.md                    Persistent Claude Code operating contract (start he
 docs/                         Architecture, domain model, security, evaluation, roadmap, status
 .claude/                      Rules, skills, agents, hooks, settings for Claude Code sessions
 evaluation/                    System-level evaluation (implemented, Phase 11) — python -m evaluation.run
-evaluation/golden_cases/      Synthetic scenario fixtures (schema + 10 cases)
+evaluation/golden_cases/      Synthetic scenario fixtures (schema + 11 cases, Scenarios A-L)
+demo/                          Scripted, graded demo-script.md walkthrough (implemented, Phase 12) — python -m demo.run
 src/                           FastAPI app + JSON API + server-rendered UI, config/logging,
                                 domain models, ingestion pipeline, fraud ML, evidence engine,
                                 AI agent + orchestration, policy engine, security/redaction
                                 (implemented); other subpackages are future-phase skeletons
 alembic/                       Migrations (implemented) — 17 tables + 1 link table
-tests/unit/                   102 passing tests (includes 18 Phase 10 API tests + 20 Phase 11 evaluation tests)
+tests/unit/                   116 passing tests (includes 18 Phase 10 API tests + 20 Phase 11 evaluation tests + 14 Phase 12 demo tests)
 tests/security/                24 passing tests (redaction + red-team/adversarial suite)
 tests/reliability/             23 passing tests (retry/fallback, idempotency, DB-timeout)
 data/raw/                      Raw LATAM Bank dataset (git-ignored, ~5.0 GB — not in git)
@@ -122,8 +127,8 @@ Verified working (`docs/project-status.md`):
 git clone <repo> && cd ai-intelligent-banking
 cp .env.example .env                  # fill in real values only if you need them; mock LLM mode needs none
 uv sync                               # installs dependencies into .venv
-uv run pytest                         # 149/149 passing (offline — model/ingestion/ML/evidence/orchestration/policy/security/reliability/API/evaluation tests use in-memory SQLite / fixtures)
-uv run ruff check . && uv run mypy src   # lint + typecheck, both clean
+uv run pytest                         # 163/163 passing (offline — model/ingestion/ML/evidence/orchestration/policy/security/reliability/API/evaluation/demo tests use in-memory SQLite / fixtures)
+uv run ruff check . && uv run mypy src evaluation demo   # lint + typecheck, both clean
 docker compose up -d                  # api on :8080, db (pgvector/pg16) on :5433
 curl http://localhost:8080/api/v1/health
 
@@ -162,22 +167,28 @@ uv run pytest tests/unit/test_api_cases.py -q   # offline, no DB, no API key
 DATABASE_URL="postgresql+psycopg://banking:banking@localhost:5433/banking_ai" uv run python -m evaluation.run
 uv run pytest tests/unit/test_evaluation.py -q   # offline, no DB, no API key
 
+# graded demo walkthrough (demo/README.md) — offline, no DB, no API key:
+uv run python -m demo.run
+uv run pytest tests/unit/test_demo.py -q
+
 docker compose down
 ```
 
-`make install|test|lint|typecheck|docker-up|docker-down|seed` wrap the same commands (`seed`
-runs the ingestion command above), but **`make` itself was not installed on the machine this
-was verified on** — install it if you want the shorter form, or just use the `uv`/`docker`
-commands directly. The demo script (`docs/demo-script.md`) is `Planned` — it needs Phase 12
-first.
+`make install|test|lint|typecheck|docker-up|docker-down|seed|train|evaluate|redteam|demo` wrap
+the same commands (`seed` runs the ingestion command above), but **`make` itself was not
+installed on the machine this was verified on** — install it if you want the shorter form, or
+just use the `uv`/`docker` commands directly.
 
-## 7. Demo scenarios — `Planned`
+## 7. Demo scenarios — `Implemented`
 
-Twelve scenarios are fully specified and ready to implement against: legitimate transaction,
-clear fraud, ambiguous transaction, critical/high-value transaction (mandatory human
-approval), LLM unavailable, dependency unavailable, prompt injection, missing data, conflicting
-evidence, duplicate action, human escalation, and policy rejection. Full detail:
-`docs/demo-script.md`. Machine-readable fixtures for ten of them: `evaluation/golden_cases/`.
+All 12 scenarios are runnable and graded: legitimate transaction, clear fraud, ambiguous
+transaction, critical/high-value transaction (mandatory human approval), LLM unavailable,
+dependency unavailable, prompt injection, missing data, conflicting evidence, duplicate action,
+human escalation, and policy rejection. `uv run python -m demo.run` (or `make demo`) — fully
+offline, no DB, no API key: **9 grade PASS outright, 3 grade PARTIAL** (a real,
+already-documented, non-unsafe limitation each — see `demo/README.md`), **0 grade FAIL**. Full
+scenario detail: `docs/demo-script.md`. Machine-readable fixtures for all twelve:
+`evaluation/golden_cases/`.
 
 ## 8. Security — `Partial` (designed, not yet enforced in code)
 

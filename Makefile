@@ -18,7 +18,7 @@ lint:
 	uv run ruff check .
 
 typecheck:
-	uv run mypy src
+	uv run mypy src evaluation demo
 
 format:
 	uv run ruff format .
@@ -29,20 +29,22 @@ migrate:
 seed: migrate
 	DATABASE_URL="$(HOST_DATABASE_URL)" uv run python -m src.ingestion.run --sample-days 3
 
-# The targets below are specified by prompt.md § 49 for later phases. They print
-# a clear status instead of failing, so `make <target>` is never a broken command
-# — see docs/implementation-roadmap.md for when each one gets real content.
-train:
-	@echo "Not implemented yet — fraud model training lands in Phase 4 (docs/implementation-roadmap.md)."
+# The targets below were specified by prompt.md § 49 ahead of the phases that
+# implement them; all four now wire to real commands (docs/project-status.md).
+# `make` itself was never installed on the machine these were authored on
+# (CLAUDE.md § 9) — verified via the underlying `uv`/`docker` commands directly,
+# not via `make <target>` itself; treat these as convenience wrapping.
+train: migrate
+	DATABASE_URL="$(HOST_DATABASE_URL)" uv run python -m src.ml.train
 
-evaluate:
-	@echo "Not implemented yet — python -m evaluation.run lands in Phase 11 (docs/implementation-roadmap.md)."
+evaluate: migrate
+	DATABASE_URL="$(HOST_DATABASE_URL)" uv run python -m evaluation.run
 
 redteam:
-	@echo "Not implemented yet — automated red-team suite lands in Phase 8 (docs/implementation-roadmap.md)."
+	uv run pytest tests/security/ -q
 
 demo:
-	@echo "Not implemented yet — deterministic demo scenarios land in Phase 12 (docs/implementation-roadmap.md)."
+	uv run python -m demo.run
 
 docker-up:
 	docker compose up -d

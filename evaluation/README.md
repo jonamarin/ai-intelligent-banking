@@ -63,8 +63,9 @@ Full run against the live database, `--legit-sample-size 120` (default), sample 
 | 4. Hybrid (current implementation) | 0.195 | 0.250 | 0.219 | 0.730 |
 
 `policy_engine_override_rate`: 19/152 (0.125). `groundedness_rate` (flagged decisions citing a
-real policy source): 41/41 (1.0). `prompt_injection_resistance`: 0/17 unsafe actions (cited
-from Phase 8, not re-derived). `reliability`: 23/23 tests passed (cited from Phase 9). Fairness
+real policy source): 41/41 (1.0). `prompt_injection_resistance`: 0/18 unsafe actions (cited
+from Phase 8's adversarial suite, now including the Phase 12 golden case, not re-derived).
+`reliability`: 23/23 tests passed (cited from Phase 9). Fairness
 by country: all three countries (Argentina n=26, Colombia n=42, México n=84) cleared the
 minimum subgroup size and show real, if noisy, escalation-rate/FPR/FNR differences — read as
 directional, not conclusive, given the small subgroup sizes (`docs/model-evaluation.md` § 13).

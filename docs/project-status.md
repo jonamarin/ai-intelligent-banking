@@ -4,16 +4,15 @@ Owns: verified current implementation state. This document must never represent 
 functionality as implemented. Update it whenever a meaningful implementation phase
 (`docs/implementation-roadmap.md`) completes, changes, or blocks.
 
-**Last meaningful update:** 2026-09-27 (Phase 11 — Evaluation implemented and verified).
+**Last meaningful update:** 2026-09-27 (Phase 12 — Demo implemented and verified).
 **Last validation:** 2026-09-27 — actually run, not just inspected: `uv run ruff check .`
-(clean), `uv run mypy src evaluation` (clean, 81 files), `uv run pytest` (149/149 passed), and
-a full live evaluation run against the real database (152-case common held-out sample, all four
-`docs/evaluation-plan.md` § 10 approaches measured, fairness by country, `data/reports/
-evaluation_report.json` committed) (§ Phase 11 detail below).
+(clean), `uv run mypy src evaluation demo` (clean), `uv run pytest` (163/163 passed), and
+`uv run python -m demo.run` (all 12 `docs/demo-script.md` scenarios: 9 PASS, 3 PARTIAL, 0 FAIL,
+exit code 0) (§ Phase 12 detail below).
 
 ## Current phase
 
-Phase 11 (Evaluation) complete. This repository now contains: the original master prompt
+Phase 12 (Demo) complete. This repository now contains: the original master prompt
 (`prompt.md`), the competition brief (`project_presentation.txt`), the LATAM Bank dataset
 documentation (two PDFs at the repository root), the raw LATAM Bank dataset itself
 (`data/raw/`, git-ignored, ~5.0 GB — `docs/data-lineage.md` § 1), the Claude Code operating
@@ -24,11 +23,12 @@ finding (Phase 4), a working Evidence Engine that has built and persisted real e
 (Phase 5), a working case orchestration state machine (Phase 6), a real deterministic
 authorization path (Phase 7), a centralized PII/secret redaction layer and red-team test suite
 (Phase 8), real reliability handling for LLM/DB/RAG failure and idempotency (Phase 9), a real
-JSON API plus server-rendered customer/analyst UI (Phase 10), and now `python -m evaluation.run`
-(`docs/evaluation-plan.md` § 9) — a real system-level evaluation comparing Rules-only,
-Fraud-ML-only, LLM-only, and the Hybrid pipeline on one common held-out sample, plus fairness,
-LLM/agent, reliability, and business metrics (the last honestly `"not available"`, never
-fabricated). See `evaluation/README.md`.
+JSON API plus server-rendered customer/analyst UI (Phase 10), a real system-level evaluation
+comparing Rules-only, Fraud-ML-only, LLM-only, and the Hybrid pipeline on one common held-out
+sample plus fairness, LLM/agent, reliability, and business metrics (Phase 11, the last honestly
+`"not available"`, never fabricated — see `evaluation/README.md`), and now `demo/` — all 12
+`docs/demo-script.md` scenarios runnable and graded on demand (`make demo` or
+`uv run python -m demo.run`), fully offline. See `demo/README.md`.
 **A real, non-obvious finding from actually running the comparison**: "LLM only" and "Hybrid"
 produce identical flagged outcomes on the sample — the Policy Engine never changes *which*
 action gets proposed, only *whether human approval is independently required*. Its actual
@@ -52,7 +52,7 @@ exactly why this project reports it as its own line rather than only the aggrega
 | 9 — Reliability | IMPLEMENTED — see § Phase 9 detail below (LLM fallback, DB timeout, RAG-failure degradation, and idempotency all verified — the idempotency round trip against a real database, the rest via `tests/reliability/`) |
 | 10 — UI | IMPLEMENTED — see § Phase 10 detail below (Scenarios A/B/D drivable live in a real browser, verified; Scenario C honestly reported as not yet reachable live — a pre-existing Phase 6 gap this phase's testing surfaced) |
 | 11 — Evaluation | IMPLEMENTED — see § Phase 11 detail below (all four `docs/evaluation-plan.md` § 10 approaches measured on one live, 152-case common held-out sample; business metrics honestly "not available," not fabricated) |
-| 12 — Demo | NOT_IMPLEMENTED |
+| 12 — Demo | IMPLEMENTED — see § Phase 12 detail below (all 12 `docs/demo-script.md` scenarios runnable and graded PASS/PARTIAL/FAIL, offline; 9 PASS, 3 PARTIAL, 0 FAIL) |
 | 13 — Observability | NOT_IMPLEMENTED |
 | 14 — Deployment Readiness (docs) | PARTIALLY_IMPLEMENTED — `docs/architecture.md`, `docs/security-model.md`, and this document lay out what deployment readiness requires; no actual readiness checklist has been executed because nothing is deployed |
 
@@ -73,7 +73,8 @@ exactly why this project reports it as its own line rather than only the aggrega
 - **Phase 1 — Foundation**, **Phase 2 — Domain**, **Phase 3 — Ingestion**,
   **Phase 4 — Fraud ML**, **Phase 5 — Evidence Engine**, **Phase 6 — AI Agent /
   Orchestration**, **Phase 7 — Policy Engine**, **Phase 8 — Security Hardening**,
-  **Phase 9 — Reliability**, **Phase 10 — UI**, and **Phase 11 — Evaluation**, detailed below.
+  **Phase 9 — Reliability**, **Phase 10 — UI**, **Phase 11 — Evaluation**, and
+  **Phase 12 — Demo**, detailed below.
 
 ### Phase 1 detail
 
@@ -718,6 +719,62 @@ every table, same as the Phase 3 verification methodology. Date range: 2026-03-2
   (`docs/model-evaluation.md` § 9-10, still `PLANNED`); a statistically powered fairness
   claim — 152 cases across 3 countries supports a directional read, not a significance test.
   Full detail: `evaluation/README.md`.
+
+### Phase 12 detail
+
+- `demo/scenarios.py`: one hand-written, mechanically precise assertion per
+  `docs/demo-script.md` scenario (A-L) — reusing the golden-case fixtures as inputs, but
+  deliberately **not** a prose-matching grader against each fixture's own free-text
+  `expected_*` fields, per the same reasoning `src/orchestration/run_golden_cases.py` already
+  established in Phase 6 (fragile, falsely-precise pseudo-validation). Each scenario grades
+  `PASS`, `PARTIAL`, or `FAIL` — an honest three-way grade rather than a forced binary pass,
+  mirroring `docs/domain-model.md` § 4's own "never force a binary label when evidence doesn't
+  support one" applied recursively to grading the demo itself.
+- `demo/run.py`: a narrated CLI walkthrough of all 12 scenarios (`uv run python -m demo.run` or
+  `make demo`), fully offline — no DB, no API key. Exits non-zero only if any scenario grades
+  `FAIL`, so it doubles as a CI smoke check; a `PARTIAL` result does not fail the run.
+- **Two real, previously-unnoticed bugs found and fixed while building this phase, not by
+  inspection**: (1) `evaluation/golden_cases/missing_data.json`'s own `device_history` evidence
+  item used `"confidence": 0.0` to represent an orphaned-reference gap, contradicting
+  `src/evidence/graph.py`'s own documented convention (`confidence: float | None` — `None` for
+  Unknown, never a fabricated `0.0`) — found only because Scenario H's assertion needed a real,
+  falsifiable check (`confidence is None`) rather than trusting the fixture's prose. Fixed to
+  `null`. (2) `tests/unit/test_flow.py` still asserted `len(cases) == 10` after this phase added
+  an 11th golden case fixture — fixed to `11`.
+- **A new golden-case fixture added, closing a gap `evaluation/golden_cases/README.md` had
+  explicitly deferred since before the orchestrator existed**:
+  `evaluation/golden_cases/policy_rejection.json` (Scenario L) sets
+  `available_facts.case_status = "resolved"` — the one fixture that does —
+  which required extending `src/orchestration/golden_case_loader.py` to read `case_status`/
+  `transaction_type` from the fixture (defaulting `"open"` for every other fixture) so it
+  reaches `src/policies/authorization.py`'s case-eligibility denial step. Verified: the mock
+  LLM proposes `auto_resolve` (it has no independent knowledge the case is already resolved —
+  a fine recommendation on its own), and the Policy Engine correctly rejects it anyway with
+  `denied_step == "case_not_eligible"`.
+- **`Makefile`'s `train`/`evaluate`/`redteam`/`demo` targets — placeholders since Phase 1,
+  scaffolded ahead of the phases that would fill them in (`prompt.md` § 49) — now wire to real
+  commands.** `.github/workflows/ci.yml` gained a `uv run python -m demo.run` step and extended
+  its `mypy` target to `src evaluation demo`.
+- **Verified: 9 of 12 scenarios grade PASS outright; 3 grade PARTIAL** (each a real,
+  already-documented, non-unsafe limitation, never a broken guarantee) — **F** (DB/model
+  unavailable: the DB half is verified live elsewhere, `tests/reliability/test_db_timeout.py`;
+  the model half doesn't apply because the ML score was never wired into orchestration, a
+  pre-existing gap since Phase 4), **J** (duplicate action: the idempotency-key derivation is
+  verified offline here, but the DB round trip is only verified live, not repeatable in this
+  offline suite), and **K** (human escalation: this fixture produces `ask_question`, not
+  `escalate` — a genuine, already-documented Phase 6 limitation). **0 scenarios grade FAIL.**
+  Full table and reasoning: `demo/README.md`.
+- 14 new tests (`tests/unit/test_demo.py`) — one per scenario asserting its specific grade, plus
+  an aggregate "no scenario is ever graded FAIL" test and a "all 12 scenarios present and
+  uniquely lettered" test. 163 unit/security/reliability/evaluation/demo tests total (10 Phase 1
+  + 7 Phase 2 + 3 Phase 3 + 5 Phase 4 + 13 Phase 5 + 10 Phase 6 + 20 Phase 7 + 20 Phase 8 + 23
+  Phase 9 + 18 Phase 10 + 20 Phase 11 + 14 Phase 12), all passing.
+- **Not done in this phase, by design:** re-deriving metrics Phase 8/9/11 already measured
+  (adversarial suite, reliability suite, the Rules/ML/LLM/Hybrid comparison) — those stay in
+  their own test suites and reports; this phase narrates the 12 scenarios, a different,
+  presentation-oriented grouping. No executive/business polish beyond the CLI walkthrough (no
+  slide deck, no video) — out of scope for this phase's own stated deliverable. Full detail:
+  `demo/README.md`.
 
 ## In progress
 

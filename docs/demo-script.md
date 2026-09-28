@@ -2,12 +2,14 @@
 
 Owns: deterministic demonstration scenarios and expected behavior. See
 `evaluation/golden_cases/` for the machine-readable fixtures backing these scenarios, and
-`docs/implementation-roadmap.md` Phase 12 for when this becomes runnable via `make demo`.
+`demo/README.md`/`demo/scenarios.py` for the runnable, graded implementation (`make demo` or
+`uv run python -m demo.run`).
 
-**Status: `PLANNED`.** No scenario is runnable yet — this document defines what each scenario
-must demonstrate once Phases 1–9 exist, so Phase 12 has a spec to implement against rather
-than improvising one under time pressure. All data referenced is synthetic
-(`docs/data-governance.md` § 6); none of it depends on live production data.
+**Status: `IMPLEMENTED` (Phase 12).** All 12 scenarios are runnable and graded —
+`uv run python -m demo.run` (offline, no DB, no API key). 9 grade `PASS` outright; 3 grade
+`PARTIAL` (a real, already-documented, non-unsafe limitation each, not a broken guarantee —
+see `demo/README.md` for exactly which and why); 0 grade `FAIL`. All data referenced is
+synthetic (`docs/data-governance.md` § 6); none of it depends on live production data.
 
 Every scenario below states: input, expected evidence, expected model behavior, expected
 policy behavior, expected human involvement, expected final state, and expected audit

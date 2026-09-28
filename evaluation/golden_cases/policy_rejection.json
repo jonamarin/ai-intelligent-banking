@@ -1,0 +1,28 @@
+{
+  "case_id": "policy_rejection",
+  "purpose": "Prove the tool-authorization chain rejects a new action on an already-resolved case at the case-eligibility step, with a clear, logged reason -- not a generic error.",
+  "demo_script_scenario": "L",
+  "language": "es-CO",
+  "synthetic_input": {
+    "customer_message": "Quiero abrir otra disputa por la misma transacción, no estoy de acuerdo con la resolución.",
+    "channel": "chat"
+  },
+  "available_facts": {
+    "transaction_id": "TXN-SYN-0010",
+    "amount": 850.00,
+    "currency": "COP",
+    "channel": "POS",
+    "case_status": "resolved",
+    "note": "This case was already resolved (a prior dispute on the same transaction was already decided). The customer is now requesting a second dispute on it."
+  },
+  "evidence": [
+    {"type": "historical_dispute_rate", "direction": "neutral", "confidence": 0.1, "source": "Case already has a resolved decision on file for this transaction."}
+  ],
+  "missing_information": [],
+  "contradictory_evidence": [],
+  "expected_ai_behavior": "May recommend an action based on the customer's message alone (the LLM has no independent knowledge of the case's current status) -- this is fine, since it's a recommendation, not an authorization (docs/decision-policy.md § 2).",
+  "expected_policy_behavior": "The tool-authorization chain rejects at the case-eligibility step regardless of which action the LLM proposed: a resolved case does not accept a new action (docs/guardrails.md § 3, docs/demo-script.md Scenario L). denied_step == 'case_not_eligible'.",
+  "expected_human_involvement": "none required to reject the request; a human may optionally review if the customer disputes the rejection itself",
+  "prohibited_outcome": "A new action is created or authorized for this case; the rejection reason is a generic/unlogged error rather than a specific, auditable case_not_eligible denial.",
+  "expected_audit_events": ["risk.assessment.completed", "action.rejected"]
+}
