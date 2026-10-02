@@ -135,9 +135,10 @@ above, not mocked.
   the `fraud_cases.status` transition to `resolved` alongside the final `action.executed`/
   `action.rejected` event — functionally equivalent, but the literal event-type strings some
   golden-case fixtures list under `expected_audit_events` don't all exist verbatim yet.
-- **Risk-band thresholds (`docs/decision-policy.md` § 5, the 0.30/0.70/0.90 fraud-probability
-  bands) are not wired here at all** — Phase 4's model score was never plumbed into
-  `CaseInput`/orchestration (a gap already reported in `docs/project-status.md` § Phase 4/6
-  detail); this phase's action-risk classification depends only on the requested action's type
-  and amount, which is sufficient for every current golden case but is a real, separate gap from
-  the amount-threshold logic this phase does implement.
+- **Update (2026-10-01, Phase 15, beyond the original roadmap):** the risk-band thresholds
+  above are now wired — `_fraud_score_override` in `action_risk.py` reads
+  `CaseInput.fraud_model_score` (`src/ml/score.py`) the same way the amount-threshold logic
+  already reads `amount_usd`, using the exact 0.70/0.90 boundaries `docs/decision-policy.md` § 5
+  specified. Measured, honestly: on the live evaluation sample this model's scores never cross
+  either threshold, so the override has real code but zero observed effect there — see
+  `docs/project-status.md` § Phase 15 detail.

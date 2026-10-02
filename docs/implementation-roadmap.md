@@ -366,3 +366,52 @@ correlation-ID gap Phase 13 had already fixed elsewhere (`src/evidence/persist.p
 pattern as `src/policies/gateway.py`) and corrected two stale forward-looking docs
 (`docs/api-contracts.md`'s `GET /metrics` status, `docs/architecture.md`'s pre-implementation
 header). Full detail: `docs/project-status.md` § Phase 14 detail.
+
+## Phase 15 — Fraud ML Score Wiring (beyond the original roadmap)
+
+`IMPLEMENTED` (see `docs/project-status.md` § Phase 15 detail). Not one of the original 14
+competition-roadmap phases — added at the user's explicit request after Phase 14 closed, having
+identified it as the project's single most-referenced open gap and the highest-leverage next
+step regardless of which tool eventually trains the model.
+
+**Objective:** consult the trained fraud ML model's score (Phase 4) at live decision time,
+closing the gap every one of Phases 4/6/7/9/11/13 had to honestly flag. **Scope:** a cached
+live-scoring module (`src/ml/score.py`), carrying the score through `CaseInput`/`CaseResult`,
+reading it in the Policy Engine's action-risk classification (`docs/decision-policy.md` § 5's
+risk bands, finally wired to a real score), persisting `decisions.model_degraded` (a column
+that has existed since Phase 9), and feeding the same score into the Phase 11 evaluation's
+Hybrid baseline. **Dependencies:** Phase 4 (the trained artifact), Phase 7 (the Policy Engine),
+Phase 9 (the `model_degraded` column), Phase 11 (the evaluation pipeline to re-run).
+**Tests:** an allow/deny pair for the new fraud-score override (mirroring the existing
+amount-based one), end-to-end propagation of `model_degraded` through every `CaseResult`
+construction path, and a regression test that `None` (no live score) leaves today's behavior
+unchanged. **Security:** none — no new trust boundary; the score can only ever escalate
+action-risk, never downgrade it, same shape as every other override in
+`src/policies/action_risk.py`. **Exit criteria:** a real transaction scores correctly and the
+score changes an authorization outcome when manufactured high enough to (unit-tested); live
+verification against a real database that both a real score and a model-unavailable path
+persist correctly. **Risks:** a missing model artifact must degrade visibly
+(`model_degraded=True`), never silently skip risk assessment — the same "never fail open" rule
+every other dependency failure in this project already follows.
+
+**Delivered as:** `src/ml/score.py` (new — cached scoring, documented one-process-lifetime
+staleness tradeoff), `src/ml/model.py::predict_single`, `CaseInput.fraud_model_score`/
+`.model_degraded`, `src/policies/action_risk.py::_fraud_score_override`,
+`src/policies/config.py`'s two new thresholds (0.70/0.90 — the exact illustrative numbers
+`docs/decision-policy.md` § 5 wrote before any model existed to feed them), wired through
+`src/orchestration/live_case.py`, persisted by `src/policies/gateway.py`, metered by
+`src/monitoring/metrics.py` (`FRAUD_MODEL_SCORE`, `CASES_MODEL_DEGRADED_TOTAL`), and fed into
+`evaluation/sample.py`'s `EvalCase`s. **Exit criteria met, verified live against a real
+Postgres, not simulated**: a real transaction scored `0.4898` (`model_degraded=False`,
+confirmed persisted via direct `SELECT`); the same transaction with the model artifact
+temporarily removed produced `model_degraded=True`. **A real, honestly-reported finding from
+re-running the Phase 11 evaluation afterward**: the Hybrid row's numbers came back completely
+unchanged (`policy_engine_override_rate` still 19/152) — not because the wiring is inert, but
+because every `fraud_model_score` on the live 152-case sample falls in a narrow band
+(~0.3997–0.5274) that never crosses either configured threshold, a direct, measured consequence
+of the Phase 4 finding that this model performs near chance. Also upgraded `demo/scenarios.py`
+Scenario F from `PARTIAL` to `PASS` (10/12 PASS, 2/12 PARTIAL, 0/12 FAIL overall) and corrected
+a deviation found along the way: `docs/demo-script.md`'s original Scenario F spec described a
+fallback to the logistic-regression baseline on model failure; the actual implementation
+degrades straight to no live score at all — noted, not silently implemented differently.
+16 new tests, 194 total. Full detail: `docs/project-status.md` § Phase 15 detail.

@@ -64,6 +64,7 @@ def authorize(
     requested_action: str | None = None,
     amount_usd: float | None = None,
     requested_amount_usd: float | None = None,
+    fraud_model_score: float | None = None,
     config: PolicyConfig | None = None,
 ) -> AuthorizationResult:
     config = config or PolicyConfig()
@@ -73,6 +74,7 @@ def authorize(
         requested_action=requested_action,
         amount_usd=amount_usd,
         requested_amount_usd=requested_amount_usd,
+        fraud_model_score=fraud_model_score,
         config=config,
     )
 

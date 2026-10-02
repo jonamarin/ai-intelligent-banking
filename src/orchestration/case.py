@@ -37,6 +37,20 @@ class CaseInput:
     # needs classifying.
     requested_action: str | None = None
     requested_amount_usd: float | None = None
+    # The trained fraud model's score for this transaction (src/ml/score.py)
+    # — None for a golden-case fixture (no live feature pipeline backs a
+    # synthetic transaction; honestly "Unknown", never a fabricated score,
+    # matching this project's confidence=None convention) or for a live
+    # case where the model artifact itself is unavailable (see
+    # model_degraded below). Read by src/policies/action_risk.py to
+    # (only ever) escalate action-risk — docs/decision-policy.md § 5's
+    # risk bands, finally wired in.
+    fraud_model_score: float | None = None
+    # True only when a live case expected a score and src/ml/score.py
+    # returned None because the model artifact was unavailable — distinct
+    # from a golden case's fraud_model_score=None, which is simply "not
+    # applicable," never "degraded." Mirrors llm_degraded (Phase 9).
+    model_degraded: bool = False
 
 
 @dataclasses.dataclass
@@ -55,6 +69,10 @@ class CaseResult:
     # src/orchestration/fallback.py instead (Phase 9, docs/demo-script.md
     # Scenario E) — "the degradation itself is an audit event."
     llm_degraded: bool = False
+    # Copied from CaseInput.model_degraded (never computed in here — flow.py
+    # has no DB access and must stay fully offline-capable for golden
+    # cases). docs/demo-script.md Scenario F.
+    model_degraded: bool = False
 
     def to_dict(self) -> dict:
         return {
@@ -68,4 +86,5 @@ class CaseResult:
                 dataclasses.asdict(self.authorization) if self.authorization else None
             ),
             "llm_degraded": self.llm_degraded,
+            "model_degraded": self.model_degraded,
         }

@@ -135,3 +135,29 @@ def test_proposal_requires_human_approval_can_only_upgrade_never_downgrade() -> 
     downgraded to False by policy."""
     result = authorize(_proposal("get_customer", requires_human_approval=True), config=_CONFIG)
     assert result.requires_human_approval is True
+
+
+def test_critical_fraud_score_requires_approval_even_if_config_would_automate_everything() -> None:
+    """docs/decision-policy.md § 5's CRITICAL risk band, finally wired to a
+    real score (src/ml/score.py, Phase 15) — same guarantee shape as the
+    amount-based Scenario D test above: no policy config can automate past
+    it."""
+    permissive_config = PolicyConfig(
+        large_amount_threshold_usd=10_000.0,
+        automate_low_risk=True,
+        automate_medium_risk=True,
+        automate_high_risk=True,
+    )
+    result = authorize(
+        _proposal("create_dispute"),
+        fraud_model_score=0.95,
+        config=permissive_config,
+    )
+    assert result.action_risk == "irreversible"
+    assert result.requires_human_approval is True
+
+
+def test_low_fraud_score_does_not_escalate_a_medium_risk_tool() -> None:
+    result = authorize(_proposal("create_dispute"), fraud_model_score=0.10, config=_CONFIG)
+    assert result.action_risk == "medium"
+    assert result.requires_human_approval is False

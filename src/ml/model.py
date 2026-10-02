@@ -68,3 +68,11 @@ def train_xgboost(
 def predict_proba(artifact: ModelArtifact, x: pd.DataFrame) -> np.ndarray:
     proba: np.ndarray = artifact.model.predict_proba(x[artifact.feature_columns])[:, 1]
     return proba
+
+
+def predict_single(artifact: ModelArtifact, features: dict[str, float]) -> float:
+    """One-row convenience wrapper around `predict_proba` — scoring a single
+    live transaction (`src/ml/score.py`) or a single evaluation case
+    (`evaluation/sample.py`) doesn't need a batch DataFrame call site."""
+    row = pd.DataFrame([features])[artifact.feature_columns]
+    return float(predict_proba(artifact, row)[0])

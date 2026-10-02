@@ -9,9 +9,10 @@ updated record of what's built) or the individual `docs/*.md`/`src/*/README.md` 
 subject is owned by — every section below links to its owner rather than re-deriving it.
 
 **Project:** AI Fraud & Dispute Investigator — Factored Datathon 2026 submission.
-**Status at time of writing:** Phases 1–13 of `docs/implementation-roadmap.md` are `IMPLEMENTED`
-and verified; this document is Phase 14. 178/178 tests passing, `ruff`/`mypy` clean
-(`docs/project-status.md`, updated 2026-09-28).
+**Status at time of writing:** all 14 phases of `docs/implementation-roadmap.md` are
+`IMPLEMENTED` and verified, plus Phase 15 (beyond the original roadmap — the trained fraud ML
+model's score wired into live orchestration). 194/194 tests passing, `ruff`/`mypy` clean
+(`docs/project-status.md`, updated 2026-10-01).
 
 ---
 
@@ -84,11 +85,16 @@ Where LLMs are used — always as **proposals**, never as authorization (`docs/a
   fraud, n=296,958) — proof a real signal exists in the generator's process that the
   transactional/behavioral columns loaded so far don't expose. Full detail: `src/ml/README.md`,
   `docs/project-status.md` § Phase 4 detail.
-- **A real, non-obvious gap this surfaces:** the trained model's score is **never wired into
-  live orchestration** — `run_case()` doesn't call it, so `decisions.model_degraded` exists as a
-  real column but nothing sets it `True` yet. This is why the Phase 11 evaluation's "Hybrid"
-  row excludes the ML score everywhere it's reported (below), and why demo Scenario F (model
-  unavailable) grades `PARTIAL`, not `PASS` — an honestly-tracked limitation, not hidden.
+- **Update (Phase 15, beyond the original roadmap):** the trained model's score **is now
+  consulted at live decision time** — `src/ml/score.py` scores one transaction via a cached
+  feature build, `src/policies/action_risk.py` reads it to escalate action-risk
+  (`docs/decision-policy.md` § 5's risk bands, finally wired to a real score), and
+  `decisions.model_degraded` is finally set to real values. **A real, honestly-reported finding
+  from re-running the Phase 11 evaluation after wiring it in**: the Hybrid row's numbers came
+  back completely unchanged — every score on the live sample falls in a narrow band
+  (~0.40–0.53) that never crosses the configured thresholds (0.70/0.90), a direct, measured
+  consequence of the near-chance finding above. Demo Scenario F (model unavailable) moved from
+  `PARTIAL` to `PASS` — see `docs/project-status.md` § Phase 15 detail.
 - **Evidence Engine** (`src/evidence/`, distinct from the fraud model above): six rule-based
   extraction functions (device history, country/amount/auth deviation, historical dispute rate,
   velocity) plus contradiction detection — verified against real ingested data, producing
@@ -218,7 +224,7 @@ just designed** (Phase 9, `tests/reliability/`, 23/23 passing):
 |---|---|---|
 | LLM unavailable | Bounded retry (`src/orchestration/retry.py`), then a deterministic fallback path — always `escalate`, never guess. `CaseResult.llm_degraded=True` on the decision record. The Policy Engine keeps running in full even when the LLM didn't (a $100,000-transfer case still forces human approval through the fallback path). | `tests/reliability/test_llm_fallback.py` (10 tests); demo Scenario E (`PASS`) |
 | Database unavailable | `connect_timeout` bounds the TCP connect step; fails with a clear `OperationalError` in seconds, not an indefinite hang. **A related, real gap found and fixed in Phase 13**: this bound didn't cover DNS resolution ahead of the TCP connect in one code path (the business-metrics collector) — a ~60-second stall on this Windows machine, fixed with an independent wall-clock bound. | `tests/reliability/test_db_timeout.py`; `src/monitoring/README.md` § Two real bugs |
-| Fraud/risk model unavailable | **Documented gap, not implemented**: the model is never called live in orchestration at all (see § ML components), so there is nothing to degrade — `decisions.model_degraded` exists as a real column for when that wiring happens. Demo Scenario F grades `PARTIAL` for exactly this reason. | `demo/README.md` |
+| Fraud/risk model unavailable | **Implemented (Phase 15).** `src/ml/score.py` scores every live case; a missing artifact sets `CaseInput.model_degraded=True`, propagated through `run_case()` and persisted to `decisions.model_degraded`. Verified live both ways (a real score, and the artifact temporarily removed). Demo Scenario F grades `PASS` for this reason. | `docs/project-status.md` § Phase 15 detail; `demo/README.md` |
 | RAG/policy retrieval unavailable | Any exception from `rag.retrieve()` degrades to `policy_source=None` rather than crashing the case or letting the LLM invent policy language. | `src/orchestration/flow.py::_ground_in_policy` |
 | Malformed/duplicate model or tool output | Structured-output validation rejects and retries (bounded) rather than silently coercing; a duplicate action request is detected via idempotency key, not executed twice. | `tests/reliability/test_idempotency.py`; demo Scenario J (`PARTIAL` — the DB round trip is verified live only, not repeatable offline) |
 | Kafka/event bus delayed | **Not applicable, by design** — no event/message system was ever introduced; `docs/architecture.md` § 7's own rule ("introduced only if a phase actually needs decoupled, replayable processing") was never triggered at this project's scale. A synchronous request/response path was sufficient throughout. | — |
@@ -241,7 +247,13 @@ prevalence — stated, not natural-prevalence):
 | 1. Rules only | 0.255 | 0.375 | 0.304 |
 | 2. Fraud ML only | 0.230 | 0.531 | 0.321 |
 | 3. LLM only (mock, bypasses the Policy Engine) | 0.195 | 0.250 | 0.219 |
-| 4. Hybrid (this project's actual pipeline) | 0.195 | 0.250 | 0.219 |
+| 4. Hybrid (this project's actual pipeline, now including the fraud ML score — Phase 15) | 0.195 | 0.250 | 0.219 |
+
+**Phase 15 wired the fraud ML model's score into row 4 and re-ran this exact comparison — the
+numbers above are unchanged.** Every `fraud_model_score` on this sample falls in a narrow band
+(~0.40–0.53) that never crosses the configured risk-escalation thresholds (0.70/0.90), a direct
+consequence of this model performing near chance (§ ML components) — reported as the real,
+measured result, not papered over.
 
 **A real, non-obvious finding from actually running the comparison:** rows 3 and 4 are
 identical — the Policy Engine never changes *which* action gets proposed, only *whether human
@@ -269,8 +281,8 @@ path to verify this project from a fresh clone:
 ```
 uv sync
 uv run ruff check .                        # clean
-uv run mypy src evaluation demo             # clean, 86 files
-uv run pytest                               # 178/178 passing, fully offline
+uv run mypy src evaluation demo             # clean, 87 files
+uv run pytest                               # 194/194 passing, fully offline
 uv run python -m demo.run                   # 9 PASS / 3 PARTIAL / 0 FAIL, exit 0
 docker compose up -d                        # api :8080, db :5433
 DATABASE_URL="postgresql+psycopg://banking:banking@localhost:5433/banking_ai" uv run alembic upgrade head
@@ -296,9 +308,11 @@ here, honestly:
   machine has too little free RAM for a `--full` ingestion run.
 - **The fraud model performs near chance on the currently loaded sample** — a real, verified
   finding (§ ML components), not tuned away or hidden.
-- **The fraud model's score is not wired into live orchestration** at all — a pre-existing gap
-  since Phase 4 that several later phases (Evaluation, Demo, Reliability) each had to honestly
-  account for rather than paper over.
+- **The fraud model's score is now wired into live orchestration (Phase 15)**, but has zero
+  measured effect on the live evaluation sample — every score falls in a narrow band that never
+  crosses the configured risk thresholds, a direct consequence of the near-chance finding above.
+  Retraining with a stronger feature set (§ ML components) remains the open next step for this
+  to matter.
 - **No real authentication/session system** — explicitly out of scope for this prototype
   (`docs/security-model.md` § 3), including `GET /metrics` having no auth.
 - **No business-approved risk thresholds, cost coefficients, or approval-matrix cells exist
@@ -313,7 +327,8 @@ here, honestly:
   Spanish only and reports the gap rather than fabricating coverage (a decision, not a bug,
   `docs/product-requirements.md` § 13).
 - **No log-aggregation/retention backend, PII-leakage detector, ML/feature-drift monitor, or LLM
-  cost tracking** — no live detector exists for the first three, and `MockLLMClient` makes no
+  cost tracking** — no live detector exists for the first two (a live score now exists to watch
+  for drift, Phase 15, but no drift-detection logic was built), and `MockLLMClient` makes no
   real provider call so there is no real token/cost figure to report (`src/monitoring/README.md`).
 - **No rate limiting** at the API layer (`docs/api-contracts.md` § 2, `PLANNED`).
 - **No supply-chain/dependency-vulnerability CI scanning, no encryption-at-rest/in-transit
@@ -337,11 +352,11 @@ Exact commands and scenarios: `docs/demo-script.md` (full scenario spec), `demo/
 uv run python -m demo.run     # or: make demo
 ```
 
-All 12 documented scenarios (A–L) run offline, no DB, no API key. Result: **9 grade `PASS`
-outright, 3 grade `PARTIAL`** (each a real, already-documented, non-unsafe limitation — F's ML
-half doesn't apply since no live model score exists to degrade; J's DB-level idempotency proof
-is only verified live, not repeatable offline; K's fixture produces `ask_question` rather than
-`escalate`, a genuine Phase 6 limitation), **0 grade `FAIL`**. To see the same pipeline driven
+All 12 documented scenarios (A–L) run offline, no DB, no API key. Result: **10 grade `PASS`
+outright, 2 grade `PARTIAL`** (each a real, already-documented, non-unsafe limitation — J's
+DB-level idempotency proof is only verified live, not repeatable offline; K's fixture produces
+`ask_question` rather than `escalate`, a genuine Phase 6 limitation), **0 grade `FAIL`**. To see
+the same pipeline driven
 against real, live data instead of the offline golden-case fixtures:
 
 ```
@@ -373,7 +388,7 @@ gap, see Y" — never silence.
 | **customer is compromised?** | **Documented gap.** No real identity/authentication system exists (§ Security) — a compromised session is indistinguishable from a legitimate one under the trusted-test-identity abstraction. Explicitly out of scope for this prototype, not solved. |
 | **tool is unavailable?** | **Implemented** for the one external-call-shaped tool that exists (RAG/policy retrieval) — degrades to `policy_source=None` rather than crashing (§ Reliability). Action tools (`src/tools/action_tools.py`) make no external call to fail; they only construct proposals. |
 | **tool returns incorrect data?** | **Partially addressed.** Every tool call passes through the full authorization chain regardless of its content, and `ToolProposal` arguments are structurally proven to be plain, JSON-serializable values, never a live ORM object (`tests/security/test_tool_proposal_is_a_plain_dataclass_never_exposes_orm_objects`). No explicit schema/range validation exists on read-tool query results beyond Python's own type system — a real, not fully closed gap. |
-| **model drifts?** | **Documented gap.** No drift monitoring exists (`docs/model-evaluation.md` §§ 9–10, `PLANNED`); moot in the current build since no live model score exists to drift against. |
+| **model drifts?** | **Documented gap.** No drift monitoring exists (`docs/model-evaluation.md` §§ 9–10, `PLANNED`). A live score now exists to monitor (Phase 15, `src/ml/score.py`, `FRAUD_MODEL_SCORE` metric), which makes drift detection *possible* for the first time, but no drift-detection logic was built. |
 | **prompt injection occurs?** | **Implemented, measured.** 0/18 unsafe actions across the adversarial suite (§ Security); a real detection gap (3/7 phrasings) was found and fixed while building that measurement, not merely asserted. |
 | **transaction amount is extreme?** | **Implemented, tested against an actual bypass attempt.** Irreversible/Critical actions require human approval unconditionally, regardless of AI confidence (§ Deterministic components/Human oversight). |
 | **policy is ambiguous?** | **Partially addressed.** RAG returns "no source found" rather than inventing an answer, but only 4 non-conflicting synthetic policy documents exist — no case in this corpus can exercise genuinely *conflicting* policy documents (§ Security). |

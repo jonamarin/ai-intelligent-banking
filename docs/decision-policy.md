@@ -65,6 +65,15 @@ business-approved thresholds — they are `PROPOSED` and must be configurable, n
 risk **and** transaction amount, customer authentication state, policy, action reversibility,
 uncertainty, and data quality — never on risk alone.
 
+**Implemented (Phase 15, beyond the original roadmap):** the HIGH/CRITICAL boundaries above
+(0.70/0.90) are the exact numbers `src/policies/config.py`'s `high_fraud_score_threshold`/
+`critical_fraud_score_threshold` use, read by `src/policies/action_risk.py`'s
+`_fraud_score_override` against a real fraud probability (`src/ml/score.py`). The mechanism is
+real; the specific values remain `PROPOSED`, not business-approved, same as every other
+threshold in this document — see `docs/project-status.md` § Phase 15 detail for the honest,
+measured result of turning this on (zero effect on the current evaluation sample, given this
+model's own near-chance score distribution).
+
 ## 6. Action risk levels
 
 | Level | Examples | Automation |

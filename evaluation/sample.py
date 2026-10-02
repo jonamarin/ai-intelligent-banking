@@ -21,11 +21,13 @@ import dataclasses
 import random
 from typing import Any
 
+import joblib
 from sqlalchemy.engine import Engine
 
 from src.evidence.graph import build_evidence_graph
 from src.ml.dataset import load_complaints, load_customers, load_exchange_rates, load_transactions
 from src.ml.features import FEATURE_COLUMNS, build_features
+from src.ml.score import DEFAULT_MODEL_PATH, prime_cache
 from src.orchestration.case import CaseInput
 from src.orchestration.live_case import case_input_from_graph
 
@@ -62,6 +64,20 @@ def build_eval_sample(
     complaints = load_complaints(engine)
     exchange_rates = load_exchange_rates(engine)
     features_df = build_features(transactions, customers, complaints, exchange_rates)
+
+    # Phase 15 (src/ml/score.py): prime the live-scoring cache with the
+    # features this function already built, so `case_input_from_graph`
+    # below (which now calls `score_transaction` internally) reuses it
+    # instead of reloading/recomputing the whole-table feature build a
+    # second time — the exact ~30s-at-this-scale cost this cache exists to
+    # avoid paying more than once per process (src/ml/score.py's own
+    # docstring). The artifact is required here, not optional: the
+    # "Fraud ML only" baseline below already depends on it existing
+    # (evaluation/baselines.py's own fail-loudly test,
+    # tests/unit/test_evaluation.py), so a missing artifact should fail
+    # this run loudly too, not degrade the Hybrid row silently.
+    artifact = joblib.load(DEFAULT_MODEL_PATH)
+    prime_cache(artifact, features_df)
 
     in_window = transactions[
         (transactions["transaction_date"] >= DIGITAL_EVENTS_WINDOW_START)

@@ -76,6 +76,24 @@ CASES_LLM_DEGRADED_TOTAL = Counter(
     registry=REGISTRY,
 )
 
+# --- ML (docs/observability.md § 1 "Metrics — ML") ---
+FRAUD_MODEL_SCORE = Histogram(
+    "fraud_model_score",
+    "The trained fraud model's score for a live case (src/ml/score.py), "
+    "observed whenever one was available -- distribution, not a per-case "
+    "label; docs/decision-policy.md § 5's risk bands applied the same score "
+    "to each case's authorization outcome at the time it ran.",
+    buckets=(0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0),
+    registry=REGISTRY,
+)
+CASES_MODEL_DEGRADED_TOTAL = Counter(
+    "cases_model_degraded_total",
+    "Cases where the fraud model's score was expected but unavailable "
+    "(the artifact hasn't been trained yet, or the transaction wasn't in "
+    "the cached feature sample) -- docs/demo-script.md Scenario F.",
+    registry=REGISTRY,
+)
+
 # --- security (docs/observability.md § 1 "unsafe-action rate (should "
 # --- always be 0; alert if not)") ---
 INJECTION_ATTEMPTS_DETECTED_TOTAL = Counter(
@@ -217,9 +235,7 @@ class BusinessMetricsCollector:
             )
             pending_review = (
                 conn.execute(
-                    text(
-                        "SELECT count(*) FROM fraud_cases WHERE human_review_status = 'pending'"
-                    )
+                    text("SELECT count(*) FROM fraud_cases WHERE human_review_status = 'pending'")
                 ).scalar()
                 or 0
             )

@@ -5,11 +5,14 @@
     model still runs -> policy engine still runs -> human escalation if the
     case can't be resolved without the LLM's narrative/explanation step
 
-The fraud model isn't wired into orchestration at all yet (a pre-existing,
-already-documented gap — docs/project-status.md § Phase 4/6 detail), so
-"still runs" isn't testable here; what *is* testable and tested below is
-that the Policy Engine (Phase 7) keeps running in full even when the LLM
-didn't.
+The fraud model's score (src/ml/score.py, Phase 15) is computed by
+`live_case.py` *before* `run_case()` is ever called and just rides along on
+`CaseInput` — so an LLM failure and a fraud-model failure are independent
+of each other by construction, and this file only exercises the LLM half;
+`CaseInput.model_degraded` propagation itself is tested directly
+(`test_model_degraded_survives_an_llm_failure` below). What *is* tested
+below throughout is that the Policy Engine (Phase 7) keeps running in full
+even when the LLM didn't.
 """
 
 from src.agents.llm_client import FailingLLMClient, FlakyLLMClient, MockLLMClient
@@ -39,6 +42,17 @@ def test_llm_unavailable_degrades_to_escalate_not_a_crash() -> None:
     assert result.llm_degraded is True
     assert result.action.proposed_action == "escalate"
     assert result.action.requires_human_approval is True
+
+
+def test_model_degraded_survives_an_llm_failure() -> None:
+    """Both degradation flags are independent (one CaseInput can carry
+    both) and both must still reach CaseResult even on the fallback path,
+    not just the normal one (tests/unit/test_flow.py covers the normal
+    path)."""
+    case = _case("No reconozco este cargo.", model_degraded=True)
+    result = run_case(case, FailingLLMClient(), max_attempts=1)
+    assert result.llm_degraded is True
+    assert result.model_degraded is True
 
 
 def test_llm_unavailable_never_forces_ask_question() -> None:

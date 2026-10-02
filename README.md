@@ -5,9 +5,10 @@ dispute intake and fraud investigation** for a synthetic LATAM retail bank. Buil
 Factored Datathon 2026 (`project_presentation.txt`), following the technical vision in
 `prompt.md`.
 
-> **Status: all 14 roadmap phases complete** (Phase 14 — Deployment Readiness — is
-> documentation only: `docs/final-report.md`, `docs/deployment-readiness.md`; no production
-> action was taken). This repository contains the project's Claude
+> **Status: all 14 roadmap phases complete, plus Phase 15** (Phase 14 — Deployment Readiness —
+> is documentation only: `docs/final-report.md`, `docs/deployment-readiness.md`; no production
+> action was taken. Phase 15, beyond the original roadmap, wired the trained fraud ML model's
+> score into live orchestration — `src/ml/score.py`). This repository contains the project's Claude
 > Code operating system, a working application foundation, a complete, migrated PostgreSQL
 > schema, a verified ingestion pipeline, a trained, evaluated fraud model with an
 > honestly-reported result (**it performs near chance on the currently loaded sample** — a real
@@ -21,28 +22,33 @@ Factored Datathon 2026 (`project_presentation.txt`), following the technical vis
 > **Rules-only, Fraud-ML-only, LLM-only, and the Hybrid pipeline** on one common held-out
 > sample, plus fairness metrics by country, `python -m demo.run` (`make demo`,
 > `docs/demo-script.md`), a fully offline, graded walkthrough of all 12 documented scenarios
-> (**9/12 PASS, 3/12 PARTIAL, 0/12 FAIL** — see `demo/README.md` for exactly what each `PARTIAL`
-> means and why) — and now real **Prometheus metrics + a lightweight custom tracer**
+> (**10/12 PASS, 2/12 PARTIAL, 0/12 FAIL** — see `demo/README.md` for exactly what each
+> `PARTIAL` means and why) — real **Prometheus metrics + a lightweight custom tracer**
 > (`GET /metrics`, optional Grafana dashboards via `make monitoring-up`), with the incident-
 > reconstruction guarantee (`docs/observability.md` § 5) verified live against a real database:
 > a case created through the API was fully reconstructed from its trace spans plus one
-> `audit_events` query by a shared correlation ID — see `src/monitoring/README.md`.
+> `audit_events` query by a shared correlation ID — see `src/monitoring/README.md` — and now
+> the trained fraud ML model's score, finally consulted at decision time (`src/ml/score.py`),
+> wired into the Policy Engine's risk bands, persistence, metrics, and the evaluation below.
 > **A real, non-obvious finding from actually running the evaluation
 > comparison**: "LLM only" and "Hybrid" produce identical outcomes on the sample — the Policy
 > Engine never changes *which* action gets proposed, only *whether human approval is
 > independently required* — so its real, measured effect (**19/152 cases, 12.5%**, where the LLM
 > alone wouldn't have required approval but the Policy Engine did) is reported as its own metric,
 > not hidden inside a comparison table that can't show it. See `evaluation/README.md`.
+> **A second real, honestly-reported finding, from re-running that same comparison after wiring
+> the fraud model in**: the numbers didn't move at all — every score on the sample falls in a
+> narrow band that never crosses the configured risk thresholds, a direct consequence of the
+> model's own near-chance performance (`docs/project-status.md` § Phase 15 detail).
 > **A bounded recent-date sample is loaded, not the full ~19M-row dataset** (the dev machine has
 > too little free RAM for that right now — see `src/ingestion/README.md`). **Genuine remaining
 > gaps, honestly reported:** business metrics (Expected Loss in dollars) are `"not available"` —
 > no approved cost coefficients exist, never fabricated; a real authentication/session layer is
-> explicitly out of scope for this prototype (`docs/security-model.md` § 3); risk-band
-> fraud-probability thresholds aren't wired in because Phase 4's model score was never plumbed
-> into orchestration — which is also why "Hybrid" in the evaluation excludes the ML score and
-> says so everywhere it's reported, and why no live ML-drift metric/alert exists either; one of
-> the twelve demo scenarios (asking the customer a clarifying question, live) isn't reachable
-> outside the offline golden-case suite yet. The Evidence Engine's device fingerprint is a
+> explicitly out of scope for this prototype (`docs/security-model.md` § 3); no live ML-drift
+> metric/alert exists yet (a live score exists to monitor now, but drift detection itself isn't
+> built); one of the twelve demo scenarios (asking the customer a clarifying question, live)
+> isn't reachable outside the offline golden-case suite yet. The Evidence Engine's device
+> fingerprint is a
 > documented heuristic proxy, and its direction/confidence values are illustrative, never
 > approved policy. See `docs/project-status.md` for the authoritative, up-to-date state. Every
 > claim in this README is labeled `Implemented`, `Planned`, `Partial`, or `Mocked` — treat
@@ -108,15 +114,16 @@ evaluation/                    System-level evaluation (implemented, Phase 11) �
 evaluation/golden_cases/      Synthetic scenario fixtures (schema + 11 cases, Scenarios A-L)
 demo/                          Scripted, graded demo-script.md walkthrough (implemented, Phase 12) — python -m demo.run
 src/                           FastAPI app + JSON API + server-rendered UI, config/logging,
-                                domain models, ingestion pipeline, fraud ML, evidence engine,
-                                AI agent + orchestration, policy engine, security/redaction,
-                                Prometheus metrics + tracing (implemented, Phase 13)
+                                domain models, ingestion pipeline, fraud ML (now with live
+                                scoring, Phase 15), evidence engine, AI agent + orchestration,
+                                policy engine, security/redaction, Prometheus metrics + tracing
+                                (implemented, Phase 13)
 infrastructure/                 Prometheus + Grafana config (Phase 13) — optional docker-compose
                                 `monitoring` profile, make monitoring-up
 alembic/                       Migrations (implemented) — 17 tables + 1 link table
-tests/unit/                   131 passing tests (includes 18 Phase 10 API tests + 20 Phase 11 evaluation tests + 14 Phase 12 demo tests + 15 Phase 13 observability tests)
+tests/unit/                   146 passing tests (includes 18 Phase 10 API tests + 20 Phase 11 evaluation tests + 14 Phase 12 demo tests + 15 Phase 13 observability tests + 15 Phase 15 fraud-score tests)
 tests/security/                24 passing tests (redaction + red-team/adversarial suite)
-tests/reliability/             23 passing tests (retry/fallback, idempotency, DB-timeout)
+tests/reliability/             24 passing tests (retry/fallback, idempotency, DB-timeout, model_degraded)
 data/raw/                      Raw LATAM Bank dataset (git-ignored, ~5.0 GB — not in git)
 data/models/                   Trained model artifacts (git-ignored — binary, not committed)
 data/reports/                  Ingestion + fraud-model reports (committed — small aggregate stats)
@@ -125,8 +132,8 @@ project_presentation.txt      Competition brief (constraints, judging criteria)
 LATAM_Bank_*.pdf               Source dataset documentation
 ```
 
-`tests/integration|security|end_to_end/` and `infrastructure/` don't exist yet — added when
-the phase that needs them starts (`docs/implementation-roadmap.md`), not pre-created empty.
+`tests/integration|end_to_end/` don't exist yet — added when the phase that needs them starts
+(`docs/implementation-roadmap.md`), not pre-created empty.
 
 ## 6. Setup, running locally, testing, evaluation
 
@@ -136,7 +143,7 @@ Verified working (`docs/project-status.md`):
 git clone <repo> && cd ai-intelligent-banking
 cp .env.example .env                  # fill in real values only if you need them; mock LLM mode needs none
 uv sync                               # installs dependencies into .venv
-uv run pytest                         # 178/178 passing (offline — model/ingestion/ML/evidence/orchestration/policy/security/reliability/API/evaluation/demo/observability tests use in-memory SQLite / fixtures)
+uv run pytest                         # 194/194 passing (offline — model/ingestion/ML/evidence/orchestration/policy/security/reliability/API/evaluation/demo/observability tests use in-memory SQLite / fixtures)
 uv run ruff check . && uv run mypy src evaluation demo   # lint + typecheck, both clean
 docker compose up -d                  # api on :8080, db (pgvector/pg16) on :5433
 curl http://localhost:8080/api/v1/health
@@ -203,7 +210,7 @@ All 12 scenarios are runnable and graded: legitimate transaction, clear fraud, a
 transaction, critical/high-value transaction (mandatory human approval), LLM unavailable,
 dependency unavailable, prompt injection, missing data, conflicting evidence, duplicate action,
 human escalation, and policy rejection. `uv run python -m demo.run` (or `make demo`) — fully
-offline, no DB, no API key: **9 grade PASS outright, 3 grade PARTIAL** (a real,
+offline, no DB, no API key: **10 grade PASS outright, 2 grade PARTIAL** (a real,
 already-documented, non-unsafe limitation each — see `demo/README.md`), **0 grade FAIL**. Full
 scenario detail: `docs/demo-script.md`. Machine-readable fixtures for all twelve:
 `evaluation/golden_cases/`.
@@ -232,8 +239,9 @@ Failure-mode table (what happens if the LLM, database, or fraud model is unavail
 scalability design targets: `docs/architecture.md` §§ 10, 12 (design targets, not measurements —
 see the labeling rule in `docs/evaluation-plan.md` § 1). The failure modes themselves are
 handled and tested in code: bounded retry + deterministic fallback for LLM failures, a bounded
-DB connect timeout, RAG-failure degradation, and a real idempotency mechanism (Phase 9,
-`tests/reliability/`). Observability (Phase 13, `src/monitoring/README.md`): real Prometheus
+DB connect timeout, RAG-failure degradation, a real idempotency mechanism (Phase 9,
+`tests/reliability/`), and — since Phase 15 — a real `model_degraded` signal when the fraud
+model artifact itself is unavailable. Observability (Phase 13, `src/monitoring/README.md`): real Prometheus
 metrics (`GET /metrics`), a lightweight custom tracer, and optional Grafana dashboards/alerts
 (`make monitoring-up`) — the incident-reconstruction guarantee
 (`docs/observability.md` § 5) verified live against a real database, not simulated.
@@ -294,6 +302,8 @@ production banking system (`docs/product-requirements.md` § 10).
 
 The full phased plan, with objectives, deliverables, tests, and exit criteria per phase, is
 `docs/implementation-roadmap.md` (14 phases, foundation through deployment-readiness
-documentation — all 14 now `IMPLEMENTED`). For what comes after this submission,
+documentation — all 14 now `IMPLEMENTED`, plus a Phase 15 beyond the original roadmap that
+wired the trained fraud ML model's score into live orchestration,
+`docs/project-status.md` § Phase 15 detail). For what comes after this submission,
 `docs/deployment-readiness.md` § 8 lays out the concrete, dependency-ordered work remaining
 before any real deployment.

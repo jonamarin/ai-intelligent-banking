@@ -29,6 +29,11 @@ val/test split, computes SHAP global feature importance, and writes
   business-approved cost coefficients exist in this project (docs/evaluation-plan.md § 3).
 - `explain.py` — SHAP global feature importance (per-case explanation is a Phase 10 UI concern).
 - `train.py` — CLI orchestrating all of the above into one evaluation report.
+- `score.py` (Phase 15, beyond the original roadmap) — scores one live transaction with the
+  trained artifact this module produces, finally consulted at live decision time
+  (`src/orchestration/live_case.py`). See `docs/project-status.md` § Phase 15 detail for the
+  full story, including the real, honestly-measured finding that wiring it in had zero effect
+  on the Phase 11 evaluation given this model's own near-chance score distribution (below).
 
 ## Result (2026-09-26, 90-day sample, `docs/project-status.md` § Phase 4 detail)
 

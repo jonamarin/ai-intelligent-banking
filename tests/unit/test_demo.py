@@ -38,13 +38,13 @@ def test_scenario_e_llm_unavailable_passes() -> None:
     assert result.grade == "PASS"
 
 
-def test_scenario_f_db_or_model_unavailable_is_partial_not_failed() -> None:
-    """PARTIAL, not FAIL — the DB half is verified elsewhere
-    (tests/reliability/test_db_timeout.py) and the model half is an
-    honestly-documented pre-existing gap (Phase 4), never silently claimed
-    as tested."""
+def test_scenario_f_db_or_model_unavailable_passes() -> None:
+    """PASS since Phase 15 wired the fraud model into live orchestration:
+    the DB half is verified elsewhere (tests/reliability/test_db_timeout.py)
+    and the model-degraded-propagation half is verified directly in this
+    scenario function (src/ml/score.py, src/orchestration/live_case.py)."""
     result = scenarios.scenario_f_db_or_model_unavailable()
-    assert result.grade == "PARTIAL"
+    assert result.grade == "PASS"
 
 
 def test_scenario_g_prompt_injection_passes() -> None:

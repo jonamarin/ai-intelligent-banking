@@ -5,11 +5,12 @@ Owns: deterministic demonstration scenarios and expected behavior. See
 `demo/README.md`/`demo/scenarios.py` for the runnable, graded implementation (`make demo` or
 `uv run python -m demo.run`).
 
-**Status: `IMPLEMENTED` (Phase 12).** All 12 scenarios are runnable and graded —
-`uv run python -m demo.run` (offline, no DB, no API key). 9 grade `PASS` outright; 3 grade
-`PARTIAL` (a real, already-documented, non-unsafe limitation each, not a broken guarantee —
-see `demo/README.md` for exactly which and why); 0 grade `FAIL`. All data referenced is
-synthetic (`docs/data-governance.md` § 6); none of it depends on live production data.
+**Status: `IMPLEMENTED` (Phase 12; Scenario F upgraded in Phase 15).** All 12 scenarios are
+runnable and graded — `uv run python -m demo.run` (offline, no DB, no API key). 10 grade `PASS`
+outright; 2 grade `PARTIAL` (a real, already-documented, non-unsafe limitation each, not a
+broken guarantee — see `demo/README.md` for exactly which and why); 0 grade `FAIL`. All data
+referenced is synthetic (`docs/data-governance.md` § 6); none of it depends on live production
+data.
 
 Every scenario below states: input, expected evidence, expected model behavior, expected
 policy behavior, expected human involvement, expected final state, and expected audit
@@ -90,11 +91,17 @@ event. **Demonstrates:** "Build For Failure" (`prompt.md` § 26, § 34).
 **Input:** any of A–D, with the ML model service or the database forced unavailable.
 **Expected behavior:** database unavailable → fail the request with a clear, safe error;
 never approve a financial action without being able to read authoritative state
-(`docs/architecture.md` § 10). Fraud model unavailable → fall back to the logistic-regression/
-rules baseline with `model_degraded = true`, never skip risk assessment silently.
-**Final state:** either a safe, explicit failure (DB down) or a degraded-but-functioning path
-(model down) — never a silent skip of a safety check. **Demonstrates:** never fail open for an
-authorization-sensitive action.
+(`docs/architecture.md` § 10). Fraud model unavailable → `model_degraded = true`, never skip
+reporting the degradation silently. **Final state:** either a safe, explicit failure (DB down)
+or a degraded-but-functioning path (model down, evidence-graph + Policy Engine rules still run
+without a model-based risk signal) — never a silent skip of a safety check.
+**Demonstrates:** never fail open for an authorization-sensitive action.
+**Implemented (Phase 15) with one noted deviation from the original spec**: a missing model
+artifact does **not** fall back to the logistic-regression baseline (`src/ml/baseline.py`) —
+it degrades straight to "no live fraud-model signal at all" (`fraud_model_score=None`,
+`model_degraded=true`), since the baseline was never wired into live orchestration either.
+Falling back to the baseline model specifically, rather than no model signal, remains a
+possible future enhancement, not implemented here — see `src/ml/README.md`.
 
 ## Scenario G — Prompt injection
 

@@ -138,20 +138,42 @@ def scenario_f_db_or_model_unavailable() -> ScenarioResult:
     # The DB-unavailable half is verified by tests/reliability/test_db_timeout.py
     # against a genuinely unreachable address, not repeated here (that test
     # takes a couple of seconds against a real socket timeout — not
-    # something to re-run as part of every demo narration). The fraud-model-
-    # unavailable half is honestly not applicable: docs/project-status.md §
-    # Phase 4/6/7/9/11 detail all document that the ML model's score was
-    # never wired into orchestration at all — there is no live model call
-    # in this pipeline to degrade.
+    # something to re-run as part of every demo narration). The fraud-
+    # model-unavailable half, since Phase 15 wired the model into live
+    # orchestration (src/ml/score.py), is real and testable offline too:
+    # src/orchestration/live_case.py sets CaseInput.model_degraded=True
+    # whenever the model artifact is unavailable (verified live,
+    # docs/project-status.md § Phase 15 detail); this scenario proves
+    # run_case() propagates that flag through to CaseResult end-to-end,
+    # the same mechanism Decision.model_degraded (persisted since Phase 9,
+    # finally set to anything but its default) depends on.
+    case = CaseInput(
+        case_id="DEMO-SCENARIO-F",
+        customer_id="CUST-DEMO",
+        transaction_id="TXN-DEMO",
+        customer_message="No reconozco este cargo.",
+        evidence_items=[],
+        contradictions=[],
+        escalation_required=False,
+        model_degraded=True,
+    )
+    result = run_case(case, MockLLMClient())
+    if result.model_degraded:
+        return ScenarioResult(
+            "F",
+            "Fraud model / database unavailable",
+            "PASS",
+            "DB-unavailable half verified separately (tests/reliability/test_db_timeout.py: a "
+            "genuinely unreachable address fails within the bounded connect_timeout, never an "
+            "indefinite hang). Fraud-model-unavailable half verified here directly: "
+            "CaseInput.model_degraded=True propagates through run_case() to "
+            "CaseResult.model_degraded (src/ml/score.py, Phase 15) — never silently dropped.",
+        )
     return ScenarioResult(
         "F",
         "Fraud model / database unavailable",
-        "PARTIAL",
-        "DB-unavailable half verified separately (tests/reliability/test_db_timeout.py: a "
-        "genuinely unreachable address fails within the bounded connect_timeout, never an "
-        "indefinite hang). Fraud-model-unavailable half is not applicable — the ML model is "
-        "not wired into orchestration at all (a pre-existing gap since Phase 4); "
-        "decisions.model_degraded exists as a real column but nothing sets it True yet.",
+        "FAIL",
+        f"expected CaseResult.model_degraded=True, got {result.model_degraded}.",
     )
 
 

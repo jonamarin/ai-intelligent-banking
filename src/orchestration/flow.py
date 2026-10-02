@@ -21,6 +21,14 @@ docs/architecture.md § 10) — bounded retries, then `LLMUnavailableError`,
 caught once here to switch to `fallback.py`'s deterministic path
 (`CaseResult.llm_degraded=True`, `docs/demo-script.md` Scenario E) instead
 of raising out of `run_case()` and leaving the caller with nothing.
+
+`CaseInput.fraud_model_score` (`src/ml/score.py`, `src/orchestration/
+live_case.py`) is read by `_authorize_action` below to let
+`docs/decision-policy.md` § 5's risk bands escalate action-risk — this
+module never computes the score itself (no DB access here, so golden
+cases stay fully offline); it only ever forwards whatever `CaseInput`
+already carries, same as `amount_usd`. `CaseResult.model_degraded` is
+copied through from `CaseInput.model_degraded` the same way.
 """
 
 from collections.abc import Callable
@@ -31,6 +39,8 @@ from src.config.settings import get_settings
 from src.monitoring import tracing
 from src.monitoring.metrics import (
     CASES_LLM_DEGRADED_TOTAL,
+    CASES_MODEL_DEGRADED_TOTAL,
+    FRAUD_MODEL_SCORE,
     INJECTION_ATTEMPTS_DETECTED_TOTAL,
     LLM_CALL_DURATION_SECONDS,
     LLM_CALLS_TOTAL,
@@ -107,7 +117,11 @@ def _authorize_action(
     proposal = _tool_proposal_for_action(case, action)
     if proposal is None:
         return None
-    with tracing.span("policy.authorize", tool_name=proposal.tool_name):
+    with tracing.span(
+        "policy.authorize",
+        tool_name=proposal.tool_name,
+        fraud_model_score=case.fraud_model_score,
+    ):
         result = authorize(
             proposal,
             case_status=case.case_status,
@@ -116,8 +130,11 @@ def _authorize_action(
             requested_action=case.requested_action,
             amount_usd=case.amount_usd,
             requested_amount_usd=case.requested_amount_usd,
+            fraud_model_score=case.fraud_model_score,
             config=config,
         )
+    if case.fraud_model_score is not None:
+        FRAUD_MODEL_SCORE.observe(case.fraud_model_score)
     TOOL_CALLS_TOTAL.labels(
         tool_name=proposal.tool_name,
         authorized=str(result.authorized),
@@ -176,6 +193,7 @@ def _refusal(
         # for the Policy Engine to authorize. `intent.injection_attempt_detected`
         # is the auditable signal here, not an AuthorizationResult.
         authorization=None,
+        model_degraded=case.model_degraded,
     )
 
 
@@ -208,6 +226,7 @@ def _degraded_result(
             else _authorize_action(case, action, policy_config)
         ),
         llm_degraded=True,
+        model_degraded=case.model_degraded,
     )
 
 
@@ -219,6 +238,8 @@ def run_case(
     max_attempts: int | None = None,
 ) -> CaseResult:
     attempts = max_attempts if max_attempts is not None else get_settings().llm_max_attempts
+    if case.model_degraded:
+        CASES_MODEL_DEGRADED_TOTAL.inc()
 
     with tracing.span("case.run", case_id=case.case_id):
         return _run_case_traced(case, llm_client, rag, policy_config, attempts)
@@ -283,6 +304,7 @@ def _run_case_traced(
         explanation=explanation,
         policy_source=_ground_in_policy(rag, action.proposed_action),
         authorization=_authorize_action(case, action, policy_config),
+        model_degraded=case.model_degraded,
     )
 
 

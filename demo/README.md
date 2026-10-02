@@ -25,7 +25,12 @@ reason for not doing that: fragile, falsely-precise pseudo-validation).
 - **FAIL** — a documented guarantee did not hold. `demo/run.py` exits non-zero only for this —
   a `PARTIAL` result is expected, known, and does not fail CI.
 
-## Result (2026-09-27): 9 PASS, 3 PARTIAL, 0 FAIL
+## Result (2026-10-01): 10 PASS, 2 PARTIAL, 0 FAIL
+
+**Update (2026-10-01, Phase 15):** Scenario F moved from `PARTIAL` to `PASS` — the fraud model
+is now wired into live orchestration (`src/ml/score.py`), so its model-unavailable half is real
+and tested directly, not "not applicable" anymore. See `docs/project-status.md` § Phase 15
+detail.
 
 | Scenario | Grade | Why |
 |---|---|---|
@@ -34,7 +39,7 @@ reason for not doing that: fragile, falsely-precise pseudo-validation).
 | C — Ambiguous transaction | PASS | `ask_question` proposed — no silent auto-resolve |
 | D — Critical/high-value | PASS | `requires_human_approval=True` regardless of the LLM's own `auto_resolve` recommendation |
 | E — LLM unavailable | PASS | `llm_degraded=True`, `escalate` via the deterministic fallback |
-| F — DB/model unavailable | **PARTIAL** | DB half verified elsewhere (a real unreachable-address test); model half not applicable — the ML score isn't wired into orchestration at all (pre-existing gap since Phase 4) |
+| F — DB/model unavailable | PASS | DB half verified elsewhere (a real unreachable-address test); model half verified directly — `CaseInput.model_degraded=True` propagates through `run_case()` to `CaseResult.model_degraded` (Phase 15, `src/ml/score.py`) |
 | G — Prompt injection | PASS | refused, `injection_attempt_detected=True` |
 | H — Missing data | PASS | at least one evidence item carries `confidence=None` (Unknown) |
 | I — Conflicting evidence | PASS | contradiction(s) detected and surfaced; `escalate` proposed |

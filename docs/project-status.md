@@ -4,20 +4,22 @@ Owns: verified current implementation state. This document must never represent 
 functionality as implemented. Update it whenever a meaningful implementation phase
 (`docs/implementation-roadmap.md`) completes, changes, or blocks.
 
-**Last meaningful update:** 2026-09-28 (Phase 14 — Deployment Readiness: `docs/final-report.md`
-and `docs/deployment-readiness.md` written; documentation only).
-**Last validation:** 2026-09-28 — actually run, not just inspected: `uv run ruff check .`
-(clean), `uv run mypy src evaluation demo` (clean, 86 files), `uv run pytest` (178/178 passed).
-Phase 13's own live verification (a case reconstructed from trace spans + one `audit_events`
-query by a shared correlation ID; the optional `monitoring` docker-compose profile brought up,
-verified scraping/alerting, and torn down) still stands — Phase 14 added no new runtime code
-beyond two narrow `correlation_id` fixes (§ Phase 14 detail below), re-verified by the same
-`pytest` run above.
+**Last meaningful update:** 2026-10-01 (Phase 15 — the trained fraud ML model's score is now
+wired into live orchestration, closing the most-referenced open gap in this project).
+**Last validation:** 2026-10-01 — actually run, not just inspected: `uv run ruff check .`
+(clean), `uv run mypy src evaluation demo` (clean, 87 files), `uv run pytest` (194/194 passed),
+plus a full live verification against a real Postgres: a live case correctly scored
+(`fraud_model_score=0.4898`, `model_degraded=False`); the same case re-run with the model
+artifact temporarily removed correctly produced `model_degraded=True`; `decisions.model_degraded`
+confirmed persisted via direct `SELECT`; and the full Phase 11 evaluation re-run with the score
+now wired into the Hybrid baseline (§ Phase 15 detail below for the real, honest result).
 
 ## Current phase
 
-Phase 14 (Deployment Readiness) complete — all 14 roadmap phases now implemented. This
-repository now contains: the original master prompt
+Phase 15 (Fraud ML score wired into live orchestration) complete — an addition beyond the
+original 14-phase competition roadmap, done at the user's request after closing it was
+identified as the highest-leverage next step. This repository now contains: the original master
+prompt
 (`prompt.md`), the competition brief (`project_presentation.txt`), the LATAM Bank dataset
 documentation (two PDFs at the repository root), the raw LATAM Bank dataset itself
 (`data/raw/`, git-ignored, ~5.0 GB — `docs/data-lineage.md` § 1), the Claude Code operating
@@ -36,13 +38,23 @@ sample plus fairness, LLM/agent, reliability, and business metrics (Phase 11, th
 `uv run python -m demo.run`), fully offline (Phase 12, see `demo/README.md`), `src/monitoring/`
 — real Prometheus metrics, a lightweight custom tracer, and an optional Grafana/Prometheus
 stack, all verified live against a real Postgres (Phase 13, see `src/monitoring/README.md`),
-and now `docs/final-report.md` + `docs/deployment-readiness.md` (Phase 14, documentation only)
-— the `prompt.md` § 64 engineering report and an honest "what's left before production"
-account, respectively.
-**A real, non-obvious finding from actually running the comparison**: "LLM only" and "Hybrid"
-produce identical flagged outcomes on the sample — the Policy Engine never changes *which*
-action gets proposed, only *whether human approval is independently required*. Its actual
-measured effect (19/152 cases, 12.5%, where the LLM alone would not have required human
+`docs/final-report.md` + `docs/deployment-readiness.md` (Phase 14, documentation only — the
+`prompt.md` § 64 engineering report and an honest "what's left before production" account), and
+now `src/ml/score.py` (Phase 15) — a cached live-scoring module that finally lets
+`docs/decision-policy.md` § 5's risk bands read a real fraud probability, wired through
+`CaseInput`/`CaseResult`, the Policy Engine, persistence, metrics, and the Phase 11 evaluation's
+Hybrid baseline. **A real, honestly-reported finding from actually re-running the evaluation
+after wiring it in**: on the live 152-case sample, every `fraud_model_score` falls in a narrow
+band (~0.40–0.53) that never crosses either configured threshold (0.70/0.90) — a direct,
+measured consequence of the Phase 4 finding that this model performs near chance. The mechanism
+is real and unit-tested; it simply has zero measured effect on this sample given this model's
+actual score distribution, reported honestly rather than claimed as an improvement it didn't
+produce.
+**A separate, still-real, non-obvious finding from actually running the Phase 11 comparison**:
+"LLM only" and "Hybrid" produce identical flagged outcomes on the sample — the Policy Engine
+never changes *which* action gets proposed, only *whether human approval is independently
+required*. Its actual measured effect (19/152 cases, 12.5%, where the LLM alone would not have
+required human
 approval but the Policy Engine did) is a separate metric,
 `policy_engine_override_rate` — invisible in the headline precision/recall numbers, which is
 exactly why this project reports it as its own line rather than only the aggregate comparison.
@@ -65,6 +77,7 @@ exactly why this project reports it as its own line rather than only the aggrega
 | 12 — Demo | IMPLEMENTED — see § Phase 12 detail below (all 12 `docs/demo-script.md` scenarios runnable and graded PASS/PARTIAL/FAIL, offline; 9 PASS, 3 PARTIAL, 0 FAIL) |
 | 13 — Observability | IMPLEMENTED — see § Phase 13 detail below (real metrics/traces/audit-log correlation verified live against a real Postgres; incident-reconstruction exit criterion demonstrated end-to-end; two real bugs found and fixed) |
 | 14 — Deployment Readiness (docs) | IMPLEMENTED — see § Phase 14 detail below (documentation only, per its own scope — `docs/final-report.md` and `docs/deployment-readiness.md` written; still no actual deployment, none authorized) |
+| 15 — Fraud ML score wiring (beyond the original roadmap) | IMPLEMENTED — see § Phase 15 detail below (real live scoring wired into the Policy Engine, persisted, metered, and fed into the Phase 11 evaluation; honestly measured to have zero effect on the current sample given the model's near-chance score distribution) |
 
 ## Completed
 
@@ -84,8 +97,8 @@ exactly why this project reports it as its own line rather than only the aggrega
   **Phase 4 — Fraud ML**, **Phase 5 — Evidence Engine**, **Phase 6 — AI Agent /
   Orchestration**, **Phase 7 — Policy Engine**, **Phase 8 — Security Hardening**,
   **Phase 9 — Reliability**, **Phase 10 — UI**, **Phase 11 — Evaluation**,
-  **Phase 12 — Demo**, **Phase 13 — Observability**, and **Phase 14 — Deployment Readiness**,
-  detailed below.
+  **Phase 12 — Demo**, **Phase 13 — Observability**, **Phase 14 — Deployment Readiness**, and
+  **Phase 15 — Fraud ML Score Wiring** (beyond the original roadmap), detailed below.
 
 ### Phase 1 detail
 
@@ -476,7 +489,9 @@ every table, same as the Phase 3 verification methodology. Date range: 2026-03-2
   Phase 8):** `docs/security-model.md` § 3 explicitly puts building a real identity system out
   of scope for this prototype ("use a trusted test session/identity abstraction") — so
   `is_authenticated` defaulting `True` is a documented scope boundary, not a Phase 8 TODO;
-  Phase 8 did not build one, correctly.
+  Phase 8 did not build one, correctly. **Update (2026-10-01, Phase 15):** the risk-band
+  fraud-probability wiring gap is now closed — `src/policies/action_risk.py`'s
+  `_fraud_score_override` reads `CaseInput.fraud_model_score`; see § Phase 15 detail.
 
 ### Phase 8 detail
 
@@ -692,6 +707,11 @@ every table, same as the Phase 3 verification methodology. Date range: 2026-03-2
   `docs/project-status.md` § Phase 4/6/7/9 detail) — this measures Evidence Engine + Policy
   Engine + mock LLM + Human, not the full architecture `docs/model-evaluation.md` § 12
   describes, and every mention of the row says so rather than a single caveat buried at the end.
+  **Update (2026-10-01, Phase 15):** this gap is now closed — the score is wired in and
+  `evaluation/sample.py` feeds it to every `EvalCase`. Re-running this comparison afterward
+  produced the exact same Hybrid numbers, for a real, measured reason (the model's scores never
+  cross the configured risk thresholds on this sample) — see § Phase 15 detail, not a
+  re-derivation of the numbers below.
 - **A real, non-obvious finding, only visible by actually running the comparison**: "LLM only"
   and "Hybrid" produced **identical** precision/recall and flagged sets on the live sample. Not
   a bug — the Policy Engine never changes *which* action gets proposed, only *whether human
@@ -774,7 +794,10 @@ every table, same as the Phase 3 verification methodology. Date range: 2026-03-2
   verified offline here, but the DB round trip is only verified live, not repeatable in this
   offline suite), and **K** (human escalation: this fixture produces `ask_question`, not
   `escalate` — a genuine, already-documented Phase 6 limitation). **0 scenarios grade FAIL.**
-  Full table and reasoning: `demo/README.md`.
+  Full table and reasoning: `demo/README.md`. **Update (2026-10-01, Phase 15):** Scenario F's
+  model half is no longer "not applicable" — the ML score is wired in, and this scenario now
+  directly tests `model_degraded` propagation and grades `PASS`. Current totals: 10 PASS, 2
+  PARTIAL (J, K), 0 FAIL — see § Phase 15 detail.
 - 14 new tests (`tests/unit/test_demo.py`) — one per scenario asserting its specific grade, plus
   an aggregate "no scenario is ever graded FAIL" test and a "all 12 scenarios present and
   uniquely lettered" test. 163 unit/security/reliability/evaluation/demo tests total (10 Phase 1
@@ -852,10 +875,14 @@ every table, same as the Phase 3 verification methodology. Date range: 2026-03-2
   aggregation/retention backend (ELK, Loki, CloudWatch) — trace/log data lives only in each
   container's own stdout, as before this phase; no PII-leakage detector or ML/feature-drift
   monitor (no live detector exists for either, and the Fraud ML score still isn't wired into
-  orchestration — a pre-existing Phase 4 gap); no LLM cost tracking (`MockLLMClient` makes no
-  real provider call, so there is no real token/cost figure to report — a fabricated `SIMULATED`
-  estimate was considered and rejected, `docs/observability.md` § 6); `GET /metrics` has no
-  authentication (acceptable for a local-only prototype with no production deployment,
+  orchestration — a pre-existing Phase 4 gap). **Update (2026-10-01, Phase 15):** the score is
+  now wired in (`src/ml/score.py`, `FRAUD_MODEL_SCORE` metric added), which makes drift
+  monitoring *possible* for the first time, but no drift-detection logic was built in Phase 15
+  either — still `PLANNED` (`docs/model-evaluation.md` §§ 9–10). No LLM cost tracking
+  (`MockLLMClient` makes no real provider call, so there is no real token/cost figure to report
+  — a fabricated `SIMULATED` estimate was considered and rejected, `docs/observability.md` § 6);
+  `GET /metrics` has no authentication (acceptable for a local-only prototype with no production
+  deployment,
   `CLAUDE.md` § 7). Full detail: `src/monitoring/README.md`.
 
 ### Phase 14 detail
@@ -895,6 +922,93 @@ every table, same as the Phase 3 verification methodology. Date range: 2026-03-2
   project (`CLAUDE.md` § 7). `docs/deployment-readiness.md` § 8 lists the concrete remaining
   work in dependency order for a future team that decides to deploy this project; none of it is
   started here.
+
+### Phase 15 detail — Fraud ML score wired into live orchestration (beyond the original roadmap)
+
+Not one of the original 14 competition-roadmap phases — done at the user's explicit request
+after comparing two cloud-tool recommendations (Databricks/MLflow for the ML pipeline) and
+agreeing that closing this project's single most-referenced open gap was the higher-leverage
+next step, independent of which tool eventually trains the model.
+
+- `src/ml/score.py` (new): scores one live transaction with the already-trained XGBoost
+  artifact (`data/models/xgboost-v0.1.0.joblib`, Phase 4). A module-level cache
+  (`ModelArtifact`, features DataFrame) is built once per process on first use via the exact
+  same loaders/`build_features` call `src/ml/train.py` and `evaluation/sample.py` already
+  use — no duplicated feature logic. **Documented tradeoff, not hidden**: the cache is built
+  once per process lifetime, so a transaction ingested after the process started won't score
+  until the process restarts — acceptable for this prototype's static, already-ingested sample;
+  a real deployment would need a real feature store, not an in-process cache.
+  `src/ml/model.py` gained `predict_single` (a one-row convenience wrapper).
+- `CaseInput.fraud_model_score`/`.model_degraded` (`src/orchestration/case.py`), read by
+  `src/policies/action_risk.py`'s new `_fraud_score_override` — the exact illustrative risk-band
+  boundaries `docs/decision-policy.md` § 5 wrote before any model existed to feed them
+  (`high_fraud_score_threshold=0.70`, `critical_fraud_score_threshold=0.90`,
+  `src/policies/config.py`), now actually read by code. `>= critical` forces `"irreversible"`
+  (mandatory human approval, no config can automate past it — same guarantee shape as the
+  existing amount-based override); `>= high` forces at least `"high"`. `flow.py` stays fully
+  offline-capable for golden cases — it never computes the score itself, only forwards whatever
+  `CaseInput` already carries, exactly like `amount_usd` already did.
+  `CaseResult.model_degraded` mirrors the existing `llm_degraded` field and is now actually
+  persisted by `src/policies/gateway.py` to `decisions.model_degraded` — a real column that has
+  existed since Phase 9 and had always defaulted `False` because nothing ever set it.
+- `src/orchestration/live_case.py::case_input_from_graph` calls `score_transaction` and sets
+  both new fields — the one place both the API and the CLI go through, so both get the score
+  automatically. `src/monitoring/metrics.py` gained `FRAUD_MODEL_SCORE` (a histogram) and
+  `CASES_MODEL_DEGRADED_TOTAL` (a counter), observed in `src/orchestration/flow.py` right where
+  `llm_degraded`'s metric already is — closing part of `docs/observability.md`'s "Metrics — ML"
+  caveat ("no live score exists to emit a metric from").
+- **Verified live, twice, with genuinely different results each time, against the real
+  database**: a real transaction (`TRX-MXCWNPT6UVBUMBBVOPWM`) scored `fraud_model_score=0.4898`,
+  `model_degraded=False`, persisted correctly (`SELECT model_degraded FROM decisions` confirmed
+  `f`); the same run with `data/models/xgboost-v0.1.0.joblib` temporarily removed correctly
+  produced `fraud_model_score=None`, `model_degraded=True`. Both halves of the mechanism proven
+  against real data, not simulated.
+- **`evaluation/sample.py`** now primes `src/ml/score.py`'s cache with the features table it
+  already builds (a new `prime_cache` function — avoids recomputing the whole-table feature
+  build a second time), so the Phase 11 "Hybrid" baseline finally uses the real fraud score too.
+  **A real, honestly-reported finding from re-running the evaluation**: the Hybrid row's
+  precision/recall/f1/automation_rate (0.195/0.250/0.219/0.730) and `policy_engine_override_rate`
+  (19/152) came back **exactly unchanged** from before this phase. Not because the wiring is
+  inert — every `fraud_model_score` in this 152-case sample falls in a narrow band
+  (~0.3997–0.5274) that never crosses either configured threshold, a direct, measured
+  consequence of the Phase 4 finding that this model performs near chance (test ROC-AUC ≈ 0.502).
+  The mechanism is real and unit-tested with a manufactured score
+  (`tests/unit/test_action_risk.py`, `tests/unit/test_authorization.py`); it simply has zero
+  measured effect here given this model's actual score distribution — reported honestly rather
+  than claimed as an improvement the data doesn't support. `evaluation/report.py`'s own note
+  was corrected to say so explicitly.
+- **`demo/scenarios.py`'s Scenario F upgraded from `PARTIAL` to `PASS`**: its model-unavailable
+  half was previously "not applicable" (no live model call existed at all); it now directly
+  constructs a `CaseInput(model_degraded=True, ...)` and asserts `run_case()` propagates it to
+  `CaseResult.model_degraded` — a real, falsifiable, offline-testable assertion, not a
+  simulation of one. **Demo result: 10/12 `PASS`, 2/12 `PARTIAL` (J, K), 0/12 `FAIL`** — up from
+  9/3/0 before this phase. `docs/demo-script.md`'s Scenario F spec text was also corrected: the
+  original spec said a missing model falls back to the logistic-regression baseline; the actual
+  implementation degrades straight to "no live fraud-model signal at all" — a noted deviation,
+  not silently implemented differently from what was written.
+- 16 new tests: `tests/unit/test_action_risk.py` (6 — the two threshold branches, no-escalation
+  below threshold, `None` regression safety, both overrides combining via `max_risk`),
+  `tests/unit/test_authorization.py` (2 — an allow/deny pair mirroring the existing
+  high-value-transfer test), `tests/unit/test_flow.py` (4 — end-to-end critical-score
+  escalation, `model_degraded` propagation through the normal path, the degraded-LLM path, and
+  the refusal path, plus a golden-case regression check), `tests/unit/test_ml_model.py` (3 — new
+  file, `predict_single` offline against a tiny fitted model), `tests/reliability/
+  test_llm_fallback.py` (1 — `model_degraded` survives an LLM failure too, both flags
+  independent). `src/ml/score.py`'s `score_transaction` itself is DB-only code, verified live
+  above, not mocked — consistent with `src/evidence/persist.py`/`src/policies/gateway.py`'s own
+  established pattern. 194 unit/security/reliability/evaluation/demo/observability tests total
+  (10 Phase 1 + 7 Phase 2 + 3 Phase 3 + 5 Phase 4 + 13 Phase 5 + 10 Phase 6 + 20 Phase 7 + 20
+  Phase 8 + 23 Phase 9 + 18 Phase 10 + 20 Phase 11 + 14 Phase 12 + 15 Phase 13 + 16 Phase 15),
+  all passing.
+- **Not done in this phase, by design or as an honestly-reported gap:** no logistic-regression
+  baseline fallback when the XGBoost artifact is unavailable (noted deviation from
+  `docs/demo-script.md`'s original Scenario F spec, above) — a possible future enhancement, not
+  built here. The feature cache's one-process-lifetime staleness tradeoff (above) is a real,
+  accepted limitation, not solved. No drift monitoring exists yet to watch the now-live score
+  for drift (`docs/model-evaluation.md` §§ 9–10, still `PLANNED`) — this phase makes drift
+  monitoring possible for the first time (a live score now exists to monitor) without building
+  it. Training itself was not moved to Databricks/MLflow in this phase — that remains explicitly
+  a separate, independent next step (the user's own stated reasoning for sequencing it this way).
 
 ## In progress
 
@@ -936,7 +1050,11 @@ Everything under "Status by roadmap phase" marked `NOT_IMPLEMENTED` above.
   fraud cases, but the two spot-checked cases didn't happen to show a strong device signal
   either — the fraud model has not been re-trained with device-derived features yet; that
   integration (feeding Evidence Engine / Device signals back into `src/ml/features.py`) is
-  an open next step, not yet attempted.
+  an open next step, not yet attempted. This same near-chance model's score **is** now
+  consulted at live decision time (Phase 15, `src/ml/score.py`) — that phase wired in the
+  existing model as-is; it did not retrain it, so the near-chance finding above still applies
+  directly to the live score, which is exactly why Phase 15's own re-run of the Phase 11
+  evaluation measured zero effect from wiring it in (§ Phase 15 detail).
 - **`device_id` is a heuristic proxy, not a true device fingerprint** (`src/evidence/device.py`
   — the dataset has no persistent device-fingerprint column). Known limitations: IP-based
   collisions across customers on shared networks/NAT, and a customer's own IP changing

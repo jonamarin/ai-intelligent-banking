@@ -20,6 +20,12 @@ src/policies/action_risk.py) classifies action-risk from real transaction
 facts, not from anything the LLM said — pass `--persist` to also write a
 real Decision/AuditEvent (and, for High/Irreversible actions,
 human_review_status='pending') via src/policies/gateway.py.
+
+`fraud_model_score` (Phase 15, src/ml/score.py) is the trained fraud
+model's score for this transaction, consulted here for the first time —
+`None`/`model_degraded=True` if the model hasn't been trained yet
+(`uv run python -m src.ml.train`) or this transaction isn't in the cached
+feature sample.
 """
 
 import argparse
@@ -30,6 +36,7 @@ from sqlalchemy import text
 from sqlalchemy.engine import Engine
 
 from src.evidence.graph import EvidenceGraph, build_evidence_graph
+from src.ml.score import score_transaction
 from src.orchestration.case import CaseInput, CaseResult
 
 _PLACEHOLDER_MESSAGE = (
@@ -86,6 +93,13 @@ def build_live_case(engine: Engine, transaction_id: str) -> CaseInput:
 
 def case_input_from_graph(engine: Engine, graph: EvidenceGraph) -> CaseInput:
     transaction_type, amount_usd = _transaction_facts(engine, graph.transaction_id)
+    # Phase 15 (docs/project-status.md § Phase 15 detail): the trained
+    # fraud model's score, finally consulted at decision time. `None` means
+    # the model artifact isn't available yet (a fresh clone before
+    # `uv run python -m src.ml.train`) or this transaction_id isn't in the
+    # cached feature sample (src/ml/score.py) -- either way,
+    # model_degraded=True, mirroring llm_degraded (Phase 9).
+    fraud_model_score = score_transaction(engine, graph.transaction_id)
     return CaseInput(
         case_id=graph.case_id,
         customer_id=graph.customer_id,
@@ -98,6 +112,8 @@ def case_input_from_graph(engine: Engine, graph: EvidenceGraph) -> CaseInput:
         case_status=_case_status(engine, graph.case_id),
         transaction_type=transaction_type,
         amount_usd=amount_usd,
+        fraud_model_score=fraud_model_score,
+        model_degraded=fraud_model_score is None,
     )
 
 
@@ -200,6 +216,7 @@ def main() -> None:
 
     print(f"Live case {case.case_id} (transaction {case.transaction_id}):")
     print(f"  customer_message: {case.customer_message[:120]}")
+    print(f"  fraud_model_score: {case.fraud_model_score} (model_degraded={result.model_degraded})")
     print(f"  intent: {result.intent.intent} (confidence={result.intent.confidence:.2f})")
     print(
         f"  action: {result.action.proposed_action} "

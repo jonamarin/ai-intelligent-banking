@@ -67,6 +67,14 @@ def load_golden_case(path: Path) -> CaseInput:
         amount_usd=_usd_amount(facts, "amount", "currency"),
         requested_action=facts.get("requested_action"),
         requested_amount_usd=_usd_amount(facts, "requested_amount", "requested_currency"),
+        # Phase 15 (src/ml/score.py): no live feature pipeline backs a
+        # synthetic fixture, so this defaults None ("Unknown"), never a
+        # fabricated score — but a fixture CAN set one explicitly to
+        # exercise the fraud-score risk-escalation path offline
+        # (src/policies/action_risk.py). model_degraded defaults False: a
+        # golden case with no score is "not applicable," never "degraded."
+        fraud_model_score=facts.get("fraud_model_score"),
+        model_degraded=facts.get("model_degraded", False),
     )
 
 

@@ -115,13 +115,13 @@ src/                           ← application code (Phase 1+, docs/project-stat
   api/                         ← FastAPI app, health check, error handling, case JSON API, server-rendered UI (implemented, Phase 1, 10)
   models/                      ← SQLAlchemy models + Pydantic schemas (implemented, Phase 2-3)
   ingestion/                    ← CSV -> Postgres loader + data-quality report (implemented, Phase 3)
-  ml/                           ← fraud model: features, baseline, XGBoost, evaluation (implemented, Phase 4)
+  ml/                           ← fraud model: features, baseline, XGBoost, evaluation (implemented, Phase 4); score.py: cached live scoring (implemented, Phase 15)
   evidence/                     ← device derivation, evidence graph, contradiction detection (implemented, Phase 5)
   agents/                       ← structured LLM output schemas + LLMClient/MockLLMClient (implemented, Phase 6)
   retrieval/                    ← TF-IDF policy RAG + synthetic Spanish policy docs (implemented, Phase 6)
   tools/                        ← read tools (execute directly) + action tools (proposal-only) (implemented, Phase 6)
-  orchestration/                ← case state machine, golden/live case loaders, retry/fallback (implemented, Phase 6-7, 9)
-  policies/                     ← action-risk classification, config, tool-authorization chain, idempotency-aware Decision/AuditEvent/HumanReview gateway (implemented, Phase 7, 9)
+  orchestration/                ← case state machine, golden/live case loaders, retry/fallback (implemented, Phase 6-7, 9); live_case.py now scores every live case (Phase 15)
+  policies/                     ← action-risk classification (now fraud-score-aware, Phase 15), config, tool-authorization chain, idempotency-aware Decision/AuditEvent/HumanReview gateway (implemented, Phase 7, 9)
   security/                     ← centralized PII/secret redaction layer (implemented, Phase 8)
   monitoring/                   ← Prometheus metrics + custom tracer + GET /metrics wiring (implemented, Phase 13)
 
@@ -129,9 +129,9 @@ alembic/                       ← migrations (implemented, Phase 2-3, 9) — en
                                   src.config.settings + src.models.Base.metadata
 infrastructure/                 ← Prometheus scrape/alert config + Grafana provisioning (Phase 13) —
                                   optional docker-compose `monitoring` profile, `make monitoring-up`
-tests/unit/                    ← 131 passing tests (10 Phase 1 + 7 Phase 2 + 3 Phase 3 + 5 Phase 4 + 13 Phase 5 + 10 Phase 6 + 20 Phase 7 − 4 superseded, moved to tests/security/, + 18 Phase 10 API tests + 20 Phase 11 evaluation tests + 14 Phase 12 demo tests + 15 Phase 13 metrics/tracing tests)
+tests/unit/                    ← 146 passing tests (10 Phase 1 + 7 Phase 2 + 3 Phase 3 + 5 Phase 4 + 13 Phase 5 + 10 Phase 6 + 20 Phase 7 − 4 superseded, moved to tests/security/, + 18 Phase 10 API tests + 20 Phase 11 evaluation tests + 14 Phase 12 demo tests + 15 Phase 13 metrics/tracing tests + 15 Phase 15 fraud-score-wiring tests)
 tests/security/                ← 24 passing tests (Phase 8: redaction + red-team/adversarial suite)
-tests/reliability/             ← 23 passing tests (Phase 9: retry/fallback, idempotency, DB-timeout)
+tests/reliability/             ← 24 passing tests (Phase 9: retry/fallback, idempotency, DB-timeout; + 1 Phase 15 model_degraded test)
 data/models/                   ← trained model artifacts (git-ignored — binary)
 pyproject.toml, uv.lock, Dockerfile, docker-compose.yml, Makefile,
 .github/workflows/ci.yml, .pre-commit-config.yaml, .env.example
@@ -146,7 +146,9 @@ Deployment Readiness are all done (`docs/project-status.md`). Phase 14 is docume
 per its own scope (`docs/implementation-roadmap.md`) — `docs/final-report.md` (the concise
 `prompt.md` § 64 report, including the § 58 "what happens if..." checklist) and
 `docs/deployment-readiness.md` (the detailed infra/rollback/access-control/retention gap
-analysis); no production infrastructure was created or touched.
+analysis); no production infrastructure was created or touched. **Phase 15** (beyond the
+original 14-phase roadmap, `docs/project-status.md` § Phase 15 detail) wired the trained fraud
+ML model's score into live orchestration — `src/ml/score.py`.
 `infrastructure/terraform/` and every deployment mechanism `docs/deployment-readiness.md`
 describes as missing (§ 1–8 of that document) do not exist yet — do not create empty placeholder
 directories for a phase before it actually starts; the existing `src/` subpackages that are
@@ -177,9 +179,11 @@ event). Phase 9 also wraps every LLM call in bounded retry-then-deterministic-fa
 fails clearly instead of hanging. **Genuine remaining gaps, honestly reported, not papered
 over:** a real authentication/session layer is explicitly **out of scope for this prototype**
 (`docs/security-model.md` § 3: "use a trusted test session/identity abstraction"); risk-band
-fraud-probability thresholds (`docs/decision-policy.md` § 5) are not wired in because Phase 4's
-model score was never plumbed into orchestration, so `decisions.model_degraded` exists as a real
-column but nothing sets it `True` yet; `evaluation/golden_cases/duplicate_action.json` still
+fraud-probability thresholds (`docs/decision-policy.md` § 5) are now wired in (Phase 15,
+`src/ml/score.py`) and `decisions.model_degraded` is finally set to real values — but on the
+live evaluation sample this model's near-chance scores never cross either configured threshold,
+so the wiring has zero measured effect there (honestly reported, not hidden —
+`docs/project-status.md` § Phase 15 detail); `evaluation/golden_cases/duplicate_action.json` still
 doesn't pass end-to-end (the idempotency mechanism is proven; the mock LLM's intent detection
 doesn't map that fixture's message to a `freeze_card` call — a Phase 6 gap). `call_transcripts`
 currently has **0 rows** in the live database (verified during Phase 6) despite earlier
@@ -207,7 +211,8 @@ precision/recall comparison alone — see `evaluation/README.md`. Business metri
 **Phase 12's `python -m demo.run` (`make demo`) runs and grades all 12
 `docs/demo-script.md` scenarios offline** — `demo/scenarios.py` holds one hand-written,
 falsifiable assertion per scenario (not a prose-matching grader against the golden cases' own
-`expected_*` fields — same reasoning Phase 6 already established). Result: 9/12 `PASS`, 3/12
+`expected_*` fields — same reasoning Phase 6 already established). Result (updated by Phase 15's
+Scenario F fix, below): 10/12 `PASS`, 2/12
 `PARTIAL` (each a real, already-documented, non-unsafe limitation — see `demo/README.md`), 0
 `FAIL`. Building it surfaced and fixed a real fixture bug (`missing_data.json` used a fabricated
 `confidence: 0.0` instead of `null` for "Unknown," contradicting `src/evidence/graph.py`'s own
@@ -239,6 +244,24 @@ Phase 13 had already fixed in `src/policies/gateway.py` was found and fixed the 
 `src/evidence/persist.py`'s `AuditEvent.correlation_id` was still always `None` (evidence-graph
 writes are outside the request/response cycle golden cases and background builds use, so
 Phase 13's own live verification hadn't exercised that specific write path).
+**Phase 15 (beyond the original 14-phase roadmap, `docs/project-status.md` § Phase 15 detail)
+wired the trained fraud ML model's score into live orchestration** — `src/ml/score.py` scores
+one transaction via a cached, once-per-process feature build (the same `build_features` call
+training uses — no duplicated feature logic); `CaseInput.fraud_model_score`/`.model_degraded`
+carry it into `src/policies/action_risk.py`'s new fraud-score override (the exact risk-band
+thresholds `docs/decision-policy.md` § 5 always specified, 0.70/0.90, finally read by code).
+Verified live, twice: a real transaction scored `0.4898` (`model_degraded=False`, persisted);
+the same run with the model artifact temporarily removed correctly produced `model_degraded=True`.
+**A real, honestly-reported finding from re-running the Phase 11 evaluation afterward**: the
+Hybrid row's numbers came back completely unchanged — every `fraud_model_score` on the live
+152-case sample falls in a narrow band (~0.40–0.53) that never crosses either threshold, a
+direct, measured consequence of the Phase 4 near-chance finding. The mechanism is real and
+unit-tested; it simply has zero measured effect here, reported as such rather than claimed as
+an improvement. Also flipped `demo/scenarios.py` Scenario F from `PARTIAL` to `PASS` (its
+model-unavailable half is no longer "not applicable" — it's tested directly) and corrected the
+demo-script.md spec for a deviation found along the way: a missing model artifact degrades to
+no live score at all, not a fallback to the logistic-regression baseline as originally
+specified.
 
 ## 5. Confirmed technology stack (mostly implemented; a few pieces below remain planned)
 
@@ -391,6 +414,11 @@ uv run pytest tests/unit/test_metrics.py tests/unit/test_tracing.py -q
 curl http://localhost:8080/metrics
 make monitoring-up      # Prometheus :9090, Grafana :3001 (admin/admin) — optional, local-only
 make monitoring-down
+
+# Fraud ML score wiring (docs/project-status.md § Phase 15 detail) — unit tests fully offline;
+# score_transaction itself needs the DB + a trained model (uv run python -m src.ml.train first):
+uv run pytest tests/unit/test_action_risk.py tests/unit/test_authorization.py tests/unit/test_ml_model.py -q
+DATABASE_URL="postgresql+psycopg://banking:banking@localhost:5433/banking_ai" uv run python -m src.orchestration.live_case --pick-fraud --persist
 ```
 
 `Makefile` mirrors these as `make install|lint|typecheck|test|docker-up|docker-down`, but

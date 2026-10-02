@@ -127,6 +127,7 @@ def persist_decision(
                 analyst_explanation=result.explanation.analyst_explanation,
                 customer_explanation_es=result.explanation.customer_explanation_es,
                 llm_degraded=result.llm_degraded,
+                model_degraded=result.model_degraded,
                 created_at=now,
             )
         )
@@ -134,9 +135,7 @@ def persist_decision(
         existing_evidence_ids = {
             row.evidence_id
             for row in conn.execute(
-                select(evidence_table.c.evidence_id).where(
-                    evidence_table.c.case_id == case.case_id
-                )
+                select(evidence_table.c.evidence_id).where(evidence_table.c.case_id == case.case_id)
             )
         }
         linked_ids = [
@@ -153,6 +152,8 @@ def persist_decision(
         event_types = auth.audit_event_types if auth else _no_tool_audit_events(result)
         if result.llm_degraded:
             event_types = [*event_types, "llm.degraded"]
+        if result.model_degraded:
+            event_types = [*event_types, "model.degraded"]
         payload = redact_value(_decision_payload(case, result))
         conn.execute(
             audit_events_table.insert(),
@@ -316,4 +317,6 @@ def _decision_payload(case: CaseInput, result: CaseResult) -> dict[str, Any]:
         "denied_step": auth.denied_step if auth else None,
         "injection_attempt_detected": result.intent.injection_attempt_detected,
         "contradiction_count": len(case.contradictions),
+        "fraud_model_score": case.fraud_model_score,
+        "model_degraded": result.model_degraded,
     }

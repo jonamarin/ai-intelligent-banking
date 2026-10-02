@@ -157,16 +157,23 @@ def _run_baseline_comparison(cases: list[EvalCase]) -> dict[str, Any]:
         }
     result["note"] = (
         "'4_hybrid_current_implementation' is Evidence Engine + Policy Engine + mock LLM + "
-        "Human — the Fraud ML model's score is NOT wired into orchestration (a pre-existing, "
-        "already-documented gap, docs/project-status.md § Phase 4/6/7/9 detail), so this is "
-        "not yet the full 'Rules + ML + LLM + Evidence + Human' hybrid docs/model-evaluation.md "
-        "§ 12 describes. '3_llm_only' calls MockLLMClient directly, bypassing the Policy "
-        "Engine entirely — deliberately unsafe in the way the hybrid design exists to avoid; "
-        "measuring it is the point. Its precision/recall/flagged-set are identical to the "
-        "Hybrid row on this sample BY CONSTRUCTION — the Policy Engine never changes WHICH "
-        "action gets proposed, only whether human approval is independently required "
-        "(see 'policy_engine_override_rate' for the metric that actually shows the Policy "
-        "Engine's effect)."
+        "Human + the trained Fraud ML model's score (src/ml/score.py, Phase 15, "
+        "docs/project-status.md § Phase 15 detail) — the fraud-score risk-escalation path "
+        "docs/decision-policy.md § 5 always specified is now wired in, closing the gap this "
+        "note used to flag. '3_llm_only' calls MockLLMClient directly, bypassing the Policy "
+        "Engine (and the fraud-score override) entirely — deliberately unsafe in the way the "
+        "hybrid design exists to avoid; measuring it is the point. MEASURED on this sample: "
+        "rows 3 and 4 are STILL identical, and 'policy_engine_override_rate' did NOT change "
+        "(still 19/152) — not because the wiring is inert, but because every fraud_model_score "
+        "in this 152-case sample falls in a narrow band (~0.40-0.53) that never crosses either "
+        "configured threshold (high=0.70, critical=0.90). This is a direct, measured "
+        "consequence of the Phase 4 finding that this model performs near chance (test "
+        "ROC-AUC~0.502) — its predicted probabilities don't separate classes confidently "
+        "enough to ever reach the risk bands docs/decision-policy.md § 5 defines, on this "
+        "sample. The mechanism is real and unit-tested "
+        "(tests/unit/test_action_risk.py, tests/unit/test_authorization.py) with a "
+        "manufactured score; it simply has zero measured effect here given this model's "
+        "actual score distribution — reported honestly, not hidden."
     )
     return result
 

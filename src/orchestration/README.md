@@ -192,9 +192,12 @@ that live in this package.
 
 Kafka/event-bus unavailability (§ 10's last row) is not applicable — no message bus exists in
 this project and none is planned unless a future phase actually needs asynchronous processing.
-Fraud-model unavailability (Scenario F's other half) has no live code path to degrade yet:
-Phase 4's model was never wired into orchestration at all (a pre-existing gap, not new to Phase
-9) — `decisions.model_degraded` exists as a real column for when that wiring happens, but
-nothing sets it `True` today. Circuit breakers ("where useful," per the roadmap's own scope
+**Update (2026-10-01, Phase 15):** fraud-model unavailability now has a real code path —
+`src/ml/score.py`'s cached scoring + `src/orchestration/live_case.py` setting
+`CaseInput.model_degraded=True` when the artifact is missing, propagated through `run_case()` to
+`CaseResult.model_degraded` and finally persisted to `decisions.model_degraded` (previously a
+real column nothing ever set to `True`). Verified live both ways (a real score, and the artifact
+temporarily removed) — `docs/project-status.md` § Phase 15 detail. Circuit breakers ("where
+useful," per the roadmap's own scope
 line) were judged not useful yet: every dependency here is called at most a handful of times per
 case, not in a tight loop where a breaker would earn its complexity over a bounded retry.

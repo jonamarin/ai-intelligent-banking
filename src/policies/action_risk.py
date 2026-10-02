@@ -11,7 +11,10 @@ starts locked down"). A monetary action is escalated to `"irreversible"` the
 moment its USD-equivalent amount meets the configured threshold, or its
 transaction/requested-action type is inherently irreversible (transfer,
 account closure, beneficiary change) — independent of, and never overridden
-by, whatever action-risk a `ToolProposal` itself carries.
+by, whatever action-risk a `ToolProposal` itself carries. The trained fraud
+model's score (`src/ml/score.py`, read via `fraud_model_score` below) is a
+third, independent override of the same shape, finally wiring
+`docs/decision-policy.md` § 5's risk bands to a real score.
 """
 
 from typing import Literal
@@ -68,6 +71,22 @@ def _requested_action_override(
     return None
 
 
+def _fraud_score_override(
+    fraud_model_score: float | None, *, high_threshold: float, critical_threshold: float
+) -> ActionRisk | None:
+    """docs/decision-policy.md § 5's risk bands, finally wired to a real
+    score (src/ml/score.py) — can only ever escalate action-risk, same as
+    `_requested_action_override` above; `None` (no live score available,
+    src/orchestration/case.py's own docstring on why) changes nothing."""
+    if fraud_model_score is None:
+        return None
+    if fraud_model_score >= critical_threshold:
+        return "irreversible"
+    if fraud_model_score >= high_threshold:
+        return "high"
+    return None
+
+
 def classify_action_risk(
     tool_name: str,
     *,
@@ -75,15 +94,25 @@ def classify_action_risk(
     requested_action: str | None = None,
     amount_usd: float | None = None,
     requested_amount_usd: float | None = None,
+    fraud_model_score: float | None = None,
     config: PolicyConfig | None = None,
 ) -> ActionRisk:
     config = config or PolicyConfig()
-    base = TOOL_ACTION_RISK.get(tool_name, "high")
-    override = _requested_action_override(
+    result = TOOL_ACTION_RISK.get(tool_name, "high")
+    amount_override = _requested_action_override(
         transaction_type=transaction_type,
         requested_action=requested_action,
         amount_usd=amount_usd,
         requested_amount_usd=requested_amount_usd,
         threshold=config.large_amount_threshold_usd,
     )
-    return max_risk(base, override) if override else base
+    if amount_override:
+        result = max_risk(result, amount_override)
+    score_override = _fraud_score_override(
+        fraud_model_score,
+        high_threshold=config.high_fraud_score_threshold,
+        critical_threshold=config.critical_fraud_score_threshold,
+    )
+    if score_override:
+        result = max_risk(result, score_override)
+    return result
