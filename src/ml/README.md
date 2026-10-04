@@ -12,14 +12,17 @@ val/test split, computes SHAP global feature importance, and writes
 
 ## Modules
 
-- `dataset.py` — loads `transactions`/`customers`/`complaints`/`daily_exchange_rates` from
-  Postgres; computes the temporal train/val/test split proportionally from whatever date range
-  is actually loaded (not a hardcoded calendar assumption — Phase 3 only loads a bounded
-  sample); `diagnose_fraud_score_separation` is a diagnostic-only query, never a feature.
+- `dataset.py` — loads `transactions`/`customers`/`complaints`/`daily_exchange_rates`/
+  `digital_events` (Phase 16) from Postgres; computes the temporal train/val/test split
+  proportionally from whatever date range is actually loaded (not a hardcoded calendar
+  assumption — Phase 3 only loads a bounded sample); `diagnose_fraud_score_separation` is a
+  diagnostic-only query, never a feature.
 - `features.py` — leakage-safe feature engineering. Every rolling/historical statistic is
   computed strictly prior to the row it's attached to. See its module docstring for the full
   leakage-prevention rationale and `FEATURE_COLUMNS`/`NOT_IMPLEMENTED_FEATURES` for exactly
-  what is and isn't computed.
+  what is and isn't computed. `_digital_session_features` (Phase 16) adds device/IP-novelty
+  columns via a leakage-safe `pd.merge_asof` against `digital_events` — see the "Update
+  (2026-10-03, Phase 16)" note below for the honest, negative result of actually using them.
 - `baseline.py` — logistic regression (imputed, scaled, class-balanced).
 - `model.py` — XGBoost, with `scale_pos_weight` for the dataset's severe class imbalance;
   `ModelArtifact` carries `model_version`/`feature_version`/`trained_at` on every prediction
@@ -52,6 +55,20 @@ loaded. Leading hypothesis: it lives in device/session/IP data (`digital_events`
 (`src/ingestion/README.md`). **Next step if pursuing this further: load `digital_events` for
 the same window and add device/IP-novelty features (Phase 5's job), then re-run this exact
 pipeline** — everything here is already wired to accept new columns in `FEATURE_COLUMNS`.
+
+**Update (2026-10-03, Phase 16): this next step was taken, and the honest result is negative.**
+`digital_events` was widened to a 30-day window and `_digital_session_features`
+(`src/ml/features.py`) added `has_digital_session`/`device_novelty`/`ip_novelty`/
+`digital_country_deviation` via a leakage-safe `pd.merge_asof`. Retrained (`xgboost-v0.2.0`,
+`features-v0.2.0`): **only 99 of 370,998 transactions (0.027%) matched a digital session at
+all** within the ±2h backward window — only ~29% of customers ever appear in `digital_events`,
+averaging ~9 events across the whole window, far too sparse to learn from. All four new
+features got SHAP importance `0.0`; test ROC-AUC moved from 0.502 to 0.481 (noise, not a real
+effect). This is a structural sparsity finding, not a window-size one — verified directly by
+checking the match rate *within* the overlapping window alone, not diluted by non-overlapping
+days, so a 90-day window would not plausibly change this conclusion. **The "signal lives in
+`digital_events`" hypothesis is closed, not supported by this dataset via nearest-session
+device/IP matching** — full diagnosis: `docs/project-status.md` § Phase 16 detail.
 
 ## Two real bugs found and fixed during verification (see git history / regression tests)
 

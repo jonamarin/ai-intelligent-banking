@@ -31,7 +31,13 @@ import joblib
 import pandas as pd
 from sqlalchemy.engine import Engine
 
-from src.ml.dataset import load_complaints, load_customers, load_exchange_rates, load_transactions
+from src.ml.dataset import (
+    load_complaints,
+    load_customers,
+    load_digital_events,
+    load_exchange_rates,
+    load_transactions,
+)
 from src.ml.features import build_features
 from src.ml.model import MODEL_VERSION, ModelArtifact, predict_single
 
@@ -78,9 +84,10 @@ def _load_cache(engine: Engine, model_path: Path) -> tuple[ModelArtifact, pd.Dat
     customers = load_customers(engine)
     complaints = load_complaints(engine)
     exchange_rates = load_exchange_rates(engine)
-    features_df = build_features(transactions, customers, complaints, exchange_rates).set_index(
-        "transaction_id"
-    )
+    digital_events = load_digital_events(engine)
+    features_df = build_features(
+        transactions, customers, complaints, exchange_rates, digital_events
+    ).set_index("transaction_id")
 
     _cache = (artifact, features_df)
     return _cache

@@ -25,7 +25,13 @@ import joblib
 from sqlalchemy.engine import Engine
 
 from src.evidence.graph import build_evidence_graph
-from src.ml.dataset import load_complaints, load_customers, load_exchange_rates, load_transactions
+from src.ml.dataset import (
+    load_complaints,
+    load_customers,
+    load_digital_events,
+    load_exchange_rates,
+    load_transactions,
+)
 from src.ml.features import FEATURE_COLUMNS, build_features
 from src.ml.score import DEFAULT_MODEL_PATH, prime_cache
 from src.orchestration.case import CaseInput
@@ -63,7 +69,10 @@ def build_eval_sample(
     customers = load_customers(engine)
     complaints = load_complaints(engine)
     exchange_rates = load_exchange_rates(engine)
-    features_df = build_features(transactions, customers, complaints, exchange_rates)
+    digital_events = load_digital_events(engine)
+    features_df = build_features(
+        transactions, customers, complaints, exchange_rates, digital_events
+    )
 
     # Phase 15 (src/ml/score.py): prime the live-scoring cache with the
     # features this function already built, so `case_input_from_graph`

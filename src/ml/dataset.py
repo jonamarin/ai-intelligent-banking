@@ -88,6 +88,24 @@ def load_exchange_rates(engine: Engine) -> pd.DataFrame:
     )
 
 
+def load_digital_events(engine: Engine) -> pd.DataFrame:
+    """`customer_id IS NOT NULL` -- a ~24% null rate is a real, documented
+    data-quality characteristic of this table (`src/ingestion/README.md`),
+    and an event with no customer can never be matched to that customer's
+    transactions anyway (`src/ml/features.py`'s device/IP-novelty
+    features), so filtering here avoids loading rows into pandas that
+    `build_features` could never use."""
+    return pd.read_sql(
+        """
+        SELECT event_id, event_date, customer_id, session_id, platform, browser,
+               ip_address, ip_country, ip_city
+        FROM digital_events
+        WHERE customer_id IS NOT NULL
+        """,
+        engine,
+    )
+
+
 def diagnose_fraud_score_separation(engine: Engine) -> dict:
     """Diagnostic only — NEVER a feature (docs/data-lineage.md § 5).
 

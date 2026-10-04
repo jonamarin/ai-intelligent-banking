@@ -30,6 +30,7 @@ from src.ml.dataset import (
     diagnose_fraud_score_separation,
     load_complaints,
     load_customers,
+    load_digital_events,
     load_exchange_rates,
     load_transactions,
 )
@@ -56,8 +57,9 @@ def run(report_path: Path, model_dir: Path) -> dict:
     customers = load_customers(engine)
     complaints = load_complaints(engine)
     exchange_rates = load_exchange_rates(engine)
+    digital_events = load_digital_events(engine)
 
-    features = build_features(transactions, customers, complaints, exchange_rates)
+    features = build_features(transactions, customers, complaints, exchange_rates, digital_events)
 
     min_date = features["transaction_date"].min().date()
     max_date = features["transaction_date"].max().date()
@@ -90,9 +92,20 @@ def run(report_path: Path, model_dir: Path) -> dict:
     joblib.dump(baseline_pipeline, baseline_path)
     joblib.dump(xgb_artifact, xgb_path)
 
+    digital_events_window = (
+        {
+            "min_date": str(digital_events["event_date"].min()),
+            "max_date": str(digital_events["event_date"].max()),
+            "row_count": len(digital_events),
+        }
+        if not digital_events.empty
+        else {"row_count": 0}
+    )
+
     report = {
         "run_started_at": started_at.isoformat(),
         "data_window": {"min_date": str(min_date), "max_date": str(max_date)},
+        "digital_events_window": digital_events_window,
         "split": {
             "train": {"start": str(split.train_start), "end": str(split.train_end)},
             "val": {"start": str(split.train_end), "end": str(split.val_end)},

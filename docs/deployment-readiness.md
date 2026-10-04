@@ -199,9 +199,15 @@ In rough dependency order, if this project were to move toward a real deployment
 3. ~~Wire the Fraud ML model's score into live orchestration~~ — **done, Phase 15** (beyond
    the original roadmap, `docs/project-status.md` § Phase 15 detail): the single most-referenced
    pre-existing gap across Phases 4/6/7/9/11/13 is closed, unblocking drift monitoring (§ 5) and
-   closing demo Scenario F. What's still open: retraining the model itself with a stronger
-   feature set, since the currently-wired score has zero measured effect given its near-chance
-   performance (`docs/final-report.md` § ML components).
+   closing demo Scenario F. ~~Retrain the model with a stronger feature set~~ — **attempted,
+   Phase 16** (also beyond the original roadmap, `docs/project-status.md` § Phase 16 detail):
+   device/IP-novelty features from `digital_events` were added and the model retrained, but the
+   honest result is negative — digital-session coverage on this dataset is too sparse (0.027%
+   match rate) to carry any signal, so the currently-wired score still has zero measured effect
+   given its still-near-chance performance (`docs/final-report.md` § ML components). Further
+   model-performance improvement would require richer source data (a real device/session
+   identifier, more active digital-channel usage) that this synthetic dataset doesn't provide —
+   not more engineering effort within the current feature space.
 4. Stand up real infrastructure (§ 1): managed Postgres, secrets manager, container
    orchestrator, TLS, image registry/CI-CD promotion pipeline.
 5. Add authentication/authorization hardening beyond the trusted-test-identity model: rate
@@ -216,5 +222,6 @@ In rough dependency order, if this project were to move toward a real deployment
    project and never taken here (`CLAUDE.md` § 7).
 
 None of the above is started in this repository beyond the documentation you're reading, except
-step 3 (done, Phase 15) — that remaining scope boundary is deliberate for a
-ten-day/hackathon-scale prototype (`docs/product-requirements.md` § 10), not an oversight.
+step 3 (done, Phase 15, and attempted further in Phase 16) — that remaining scope boundary is
+deliberate for a ten-day/hackathon-scale prototype (`docs/product-requirements.md` § 10), not an
+oversight.

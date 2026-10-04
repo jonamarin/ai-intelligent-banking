@@ -5,10 +5,13 @@ dispute intake and fraud investigation** for a synthetic LATAM retail bank. Buil
 Factored Datathon 2026 (`project_presentation.txt`), following the technical vision in
 `prompt.md`.
 
-> **Status: all 14 roadmap phases complete, plus Phase 15** (Phase 14 — Deployment Readiness —
-> is documentation only: `docs/final-report.md`, `docs/deployment-readiness.md`; no production
-> action was taken. Phase 15, beyond the original roadmap, wired the trained fraud ML model's
-> score into live orchestration — `src/ml/score.py`). This repository contains the project's Claude
+> **Status: all 14 roadmap phases complete, plus Phase 15 and Phase 16** (Phase 14 — Deployment
+> Readiness — is documentation only: `docs/final-report.md`, `docs/deployment-readiness.md`; no
+> production action was taken. Phase 15, beyond the original roadmap, wired the trained fraud ML
+> model's score into live orchestration — `src/ml/score.py`. Phase 16, also beyond the original
+> roadmap, tested and closed the leading hypothesis for the model's near-chance performance —
+> device/IP-novelty features from `digital_events` — with an honestly-reported negative result).
+> This repository contains the project's Claude
 > Code operating system, a working application foundation, a complete, migrated PostgreSQL
 > schema, a verified ingestion pipeline, a trained, evaluated fraud model with an
 > honestly-reported result (**it performs near chance on the currently loaded sample** — a real
@@ -40,6 +43,11 @@ Factored Datathon 2026 (`project_presentation.txt`), following the technical vis
 > the fraud model in**: the numbers didn't move at all — every score on the sample falls in a
 > narrow band that never crosses the configured risk thresholds, a direct consequence of the
 > model's own near-chance performance (`docs/project-status.md` § Phase 15 detail).
+> **A third, from Phase 16**: retraining with new device/IP-novelty features (the leading
+> hypothesis for *why* the model performs near chance) did not help either — only 0.027% of
+> transactions ever matched a digital session, too sparse to learn from; the four new features
+> scored SHAP importance `0.0` and evaluation numbers came back unchanged
+> (`docs/project-status.md` § Phase 16 detail).
 > **A bounded recent-date sample is loaded, not the full ~19M-row dataset** (the dev machine has
 > too little free RAM for that right now — see `src/ingestion/README.md`). **Genuine remaining
 > gaps, honestly reported:** business metrics (Expected Loss in dollars) are `"not available"` —
@@ -114,14 +122,15 @@ evaluation/                    System-level evaluation (implemented, Phase 11) �
 evaluation/golden_cases/      Synthetic scenario fixtures (schema + 11 cases, Scenarios A-L)
 demo/                          Scripted, graded demo-script.md walkthrough (implemented, Phase 12) — python -m demo.run
 src/                           FastAPI app + JSON API + server-rendered UI, config/logging,
-                                domain models, ingestion pipeline, fraud ML (now with live
-                                scoring, Phase 15), evidence engine, AI agent + orchestration,
+                                domain models, ingestion pipeline, fraud ML (live scoring,
+                                Phase 15; device/IP-novelty features, Phase 16 — negative
+                                result), evidence engine, AI agent + orchestration,
                                 policy engine, security/redaction, Prometheus metrics + tracing
                                 (implemented, Phase 13)
 infrastructure/                 Prometheus + Grafana config (Phase 13) — optional docker-compose
                                 `monitoring` profile, make monitoring-up
 alembic/                       Migrations (implemented) — 17 tables + 1 link table
-tests/unit/                   146 passing tests (includes 18 Phase 10 API tests + 20 Phase 11 evaluation tests + 14 Phase 12 demo tests + 15 Phase 13 observability tests + 15 Phase 15 fraud-score tests)
+tests/unit/                   154 passing tests (includes 18 Phase 10 API tests + 20 Phase 11 evaluation tests + 14 Phase 12 demo tests + 15 Phase 13 observability tests + 15 Phase 15 fraud-score tests + 8 Phase 16 digital-session-feature tests)
 tests/security/                24 passing tests (redaction + red-team/adversarial suite)
 tests/reliability/             24 passing tests (retry/fallback, idempotency, DB-timeout, model_degraded)
 data/raw/                      Raw LATAM Bank dataset (git-ignored, ~5.0 GB — not in git)
@@ -143,7 +152,7 @@ Verified working (`docs/project-status.md`):
 git clone <repo> && cd ai-intelligent-banking
 cp .env.example .env                  # fill in real values only if you need them; mock LLM mode needs none
 uv sync                               # installs dependencies into .venv
-uv run pytest                         # 194/194 passing (offline — model/ingestion/ML/evidence/orchestration/policy/security/reliability/API/evaluation/demo/observability tests use in-memory SQLite / fixtures)
+uv run pytest                         # 202/202 passing (offline — model/ingestion/ML/evidence/orchestration/policy/security/reliability/API/evaluation/demo/observability tests use in-memory SQLite / fixtures)
 uv run ruff check . && uv run mypy src evaluation demo   # lint + typecheck, both clean
 docker compose up -d                  # api on :8080, db (pgvector/pg16) on :5433
 curl http://localhost:8080/api/v1/health
@@ -290,8 +299,11 @@ This repository is set up to be worked on by Claude Code sessions with persisten
 ## 13. Limitations
 
 See `docs/project-status.md` § Known limitations for the current, maintained list (no
-business-approved thresholds exist anywhere in this project, the Fraud ML score isn't wired into
-live orchestration, no real authentication system exists, Portuguese-language gap, `make` not
+business-approved thresholds exist anywhere in this project; the Fraud ML score is wired into
+live orchestration (Phase 15) but, on the live evaluation sample, never crosses either
+configured risk threshold, so it has zero measured effect there; device/IP-novelty features
+were added and retrained on (Phase 16) but did not improve the model, which still performs near
+chance; no real authentication system exists; Portuguese-language gap; `make` not
 installed on the dev machine this was built on) — also summarized in `docs/final-report.md` §
 Known limitations, with a full production-readiness gap analysis in
 `docs/deployment-readiness.md`. This project is a ten-day/hackathon-scale prototype
@@ -303,7 +315,10 @@ production banking system (`docs/product-requirements.md` § 10).
 The full phased plan, with objectives, deliverables, tests, and exit criteria per phase, is
 `docs/implementation-roadmap.md` (14 phases, foundation through deployment-readiness
 documentation — all 14 now `IMPLEMENTED`, plus a Phase 15 beyond the original roadmap that
-wired the trained fraud ML model's score into live orchestration,
-`docs/project-status.md` § Phase 15 detail). For what comes after this submission,
+wired the trained fraud ML model's score into live orchestration
+(`docs/project-status.md` § Phase 15 detail), and a Phase 16, also beyond the original roadmap,
+that tested and closed the leading hypothesis for the model's near-chance performance —
+device/IP-novelty features from `digital_events` — with an honestly-reported negative result
+(`docs/project-status.md` § Phase 16 detail)). For what comes after this submission,
 `docs/deployment-readiness.md` § 8 lays out the concrete, dependency-ordered work remaining
 before any real deployment.

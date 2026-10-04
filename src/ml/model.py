@@ -13,8 +13,8 @@ import numpy as np
 import pandas as pd
 import xgboost as xgb
 
-MODEL_VERSION = "xgboost-v0.1.0"
-FEATURE_VERSION = "features-v0.1.0"  # bump when src/ml/features.py's FEATURE_COLUMNS changes
+MODEL_VERSION = "xgboost-v0.2.0"  # Phase 16: retrained with device/IP-novelty features
+FEATURE_VERSION = "features-v0.2.0"  # bump when src/ml/features.py's FEATURE_COLUMNS changes
 
 
 @dataclasses.dataclass

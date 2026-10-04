@@ -11,8 +11,9 @@ subject is owned by — every section below links to its owner rather than re-de
 **Project:** AI Fraud & Dispute Investigator — Factored Datathon 2026 submission.
 **Status at time of writing:** all 14 phases of `docs/implementation-roadmap.md` are
 `IMPLEMENTED` and verified, plus Phase 15 (beyond the original roadmap — the trained fraud ML
-model's score wired into live orchestration). 194/194 tests passing, `ruff`/`mypy` clean
-(`docs/project-status.md`, updated 2026-10-01).
+model's score wired into live orchestration) and Phase 16 (also beyond the original roadmap —
+device/IP-novelty features tested and found not to improve the model). 202/202 tests passing,
+`ruff`/`mypy` clean (`docs/project-status.md`, updated 2026-10-03).
 
 ---
 
@@ -95,6 +96,18 @@ Where LLMs are used — always as **proposals**, never as authorization (`docs/a
   (~0.40–0.53) that never crosses the configured thresholds (0.70/0.90), a direct, measured
   consequence of the near-chance finding above. Demo Scenario F (model unavailable) moved from
   `PARTIAL` to `PASS` — see `docs/project-status.md` § Phase 15 detail.
+- **Update (Phase 16, also beyond the original roadmap):** the leading hypothesis for *why* the
+  model performs near chance — that the real signal lives in `digital_events` (device/IP
+  novelty) — was tested directly: `digital_events` was widened to a 30-day window and four new
+  leakage-safe features (`has_digital_session`, `device_novelty`, `ip_novelty`,
+  `digital_country_deviation`) were added via a strictly-backward `pd.merge_asof` join. **The
+  honest result is negative:** only 99 of 370,998 transactions (0.027%) ever matched a digital
+  session at all — too sparse to learn from — so all four new features scored SHAP importance
+  `0.0`, test ROC-AUC moved from 0.502 to 0.481 (noise), and the Phase 11 evaluation numbers came
+  back unchanged. Diagnosed as a structural sparsity problem (~29% of customers ever appear in
+  `digital_events` at all), not a window-size one, so widening further would not plausibly
+  change the conclusion. The hypothesis is closed, documented as a finding rather than worked
+  around — see `docs/project-status.md` § Phase 16 detail.
 - **Evidence Engine** (`src/evidence/`, distinct from the fraud model above): six rule-based
   extraction functions (device history, country/amount/auth deviation, historical dispute rate,
   velocity) plus contradiction detection — verified against real ingested data, producing
@@ -253,7 +266,9 @@ prevalence — stated, not natural-prevalence):
 numbers above are unchanged.** Every `fraud_model_score` on this sample falls in a narrow band
 (~0.40–0.53) that never crosses the configured risk-escalation thresholds (0.70/0.90), a direct
 consequence of this model performing near chance (§ ML components) — reported as the real,
-measured result, not papered over.
+measured result, not papered over. **Phase 16 retrained the model with device/IP-novelty
+features and re-ran this comparison again — still unchanged** (scores now ~0.23–0.57, still
+never crossing either threshold); see § ML components for the full diagnosis.
 
 **A real, non-obvious finding from actually running the comparison:** rows 3 and 4 are
 identical — the Policy Engine never changes *which* action gets proposed, only *whether human
@@ -282,8 +297,8 @@ path to verify this project from a fresh clone:
 uv sync
 uv run ruff check .                        # clean
 uv run mypy src evaluation demo             # clean, 87 files
-uv run pytest                               # 194/194 passing, fully offline
-uv run python -m demo.run                   # 9 PASS / 3 PARTIAL / 0 FAIL, exit 0
+uv run pytest                               # 202/202 passing, fully offline
+uv run python -m demo.run                   # 10 PASS / 2 PARTIAL / 0 FAIL, exit 0
 docker compose up -d                        # api :8080, db :5433
 DATABASE_URL="postgresql+psycopg://banking:banking@localhost:5433/banking_ai" uv run alembic upgrade head
 curl http://localhost:8080/api/v1/health
@@ -311,8 +326,10 @@ here, honestly:
 - **The fraud model's score is now wired into live orchestration (Phase 15)**, but has zero
   measured effect on the live evaluation sample — every score falls in a narrow band that never
   crosses the configured risk thresholds, a direct consequence of the near-chance finding above.
-  Retraining with a stronger feature set (§ ML components) remains the open next step for this
-  to matter.
+- **Retraining with device/IP-novelty features was attempted and found not to help (Phase 16)**
+  — the leading hypothesis for the model's near-chance performance is closed, not open: digital
+  session coverage on this dataset is too sparse (0.027% match rate) to carry any signal. No
+  further ML-performance remediation is planned within this project's scope (§ ML components).
 - **No real authentication/session system** — explicitly out of scope for this prototype
   (`docs/security-model.md` § 3), including `GET /metrics` having no auth.
 - **No business-approved risk thresholds, cost coefficients, or approval-matrix cells exist

@@ -4,22 +4,23 @@ Owns: verified current implementation state. This document must never represent 
 functionality as implemented. Update it whenever a meaningful implementation phase
 (`docs/implementation-roadmap.md`) completes, changes, or blocks.
 
-**Last meaningful update:** 2026-10-01 (Phase 15 — the trained fraud ML model's score is now
-wired into live orchestration, closing the most-referenced open gap in this project).
-**Last validation:** 2026-10-01 — actually run, not just inspected: `uv run ruff check .`
-(clean), `uv run mypy src evaluation demo` (clean, 87 files), `uv run pytest` (194/194 passed),
-plus a full live verification against a real Postgres: a live case correctly scored
-(`fraud_model_score=0.4898`, `model_degraded=False`); the same case re-run with the model
-artifact temporarily removed correctly produced `model_degraded=True`; `decisions.model_degraded`
-confirmed persisted via direct `SELECT`; and the full Phase 11 evaluation re-run with the score
-now wired into the Hybrid baseline (§ Phase 15 detail below for the real, honest result).
+**Last meaningful update:** 2026-10-03 (Phase 16 — device/IP-novelty features added from
+`digital_events` and the model retrained; a real, honestly-reported **negative** result — see
+§ Phase 16 detail below).
+**Last validation:** 2026-10-03 — actually run, not just inspected: `uv run ruff check .`
+(clean), `uv run mypy src evaluation demo` (clean, 87 files), `uv run pytest` (202/202 passed),
+plus a full live retrain + re-evaluation against a real Postgres with a 30-day `digital_events`
+window (§ Phase 16 detail below for the exact, measured, negative result).
 
 ## Current phase
 
-Phase 15 (Fraud ML score wired into live orchestration) complete — an addition beyond the
-original 14-phase competition roadmap, done at the user's request after closing it was
-identified as the highest-leverage next step. This repository now contains: the original master
-prompt
+Phase 16 (device/IP-novelty features from `digital_events`, model retrained) complete — another
+addition beyond the original 14-phase competition roadmap, done at the user's own request after
+their own root-cause analysis of the Phase 4 near-chance finding (independently arriving at the
+same hypothesis this project's own `src/ml/features.py` had documented:
+`NOT_IMPLEMENTED_FEATURES = ["device_novelty", "ip_novelty", "geographic_distance_km"]`).
+**The honest result: it didn't help** — see § Phase 16 detail for why, measured precisely, not
+assumed. This repository now contains: the original master prompt
 (`prompt.md`), the competition brief (`project_presentation.txt`), the LATAM Bank dataset
 documentation (two PDFs at the repository root), the raw LATAM Bank dataset itself
 (`data/raw/`, git-ignored, ~5.0 GB — `docs/data-lineage.md` § 1), the Claude Code operating
@@ -49,7 +50,15 @@ band (~0.40–0.53) that never crosses either configured threshold (0.70/0.90) �
 measured consequence of the Phase 4 finding that this model performs near chance. The mechanism
 is real and unit-tested; it simply has zero measured effect on this sample given this model's
 actual score distribution, reported honestly rather than claimed as an improvement it didn't
-produce.
+produce. **Phase 16** then tried to fix the near-chance model itself: device/IP-novelty features
+from `digital_events` (`src/ml/features.py`'s `_digital_session_features`), a 30-day
+`digital_events` ingestion (up from 7 days), and a full retrain (`xgboost-v0.2.0`). **The
+honest, measured result: it didn't help** — only 99 of 370,998 transactions (0.027%) matched a
+digital session at all within the leakage-safe ±2h backward window, so the new features carried
+essentially no training signal (SHAP importance `0.0` for all four) and test ROC-AUC moved from
+0.502 to 0.481 (noise, not a real effect either way). See § Phase 16 detail for the full,
+honest diagnosis — a real negative result, reported exactly as rigorously as every positive one
+in this project.
 **A separate, still-real, non-obvious finding from actually running the Phase 11 comparison**:
 "LLM only" and "Hybrid" produce identical flagged outcomes on the sample — the Policy Engine
 never changes *which* action gets proposed, only *whether human approval is independently
@@ -78,6 +87,7 @@ exactly why this project reports it as its own line rather than only the aggrega
 | 13 — Observability | IMPLEMENTED — see § Phase 13 detail below (real metrics/traces/audit-log correlation verified live against a real Postgres; incident-reconstruction exit criterion demonstrated end-to-end; two real bugs found and fixed) |
 | 14 — Deployment Readiness (docs) | IMPLEMENTED — see § Phase 14 detail below (documentation only, per its own scope — `docs/final-report.md` and `docs/deployment-readiness.md` written; still no actual deployment, none authorized) |
 | 15 — Fraud ML score wiring (beyond the original roadmap) | IMPLEMENTED — see § Phase 15 detail below (real live scoring wired into the Policy Engine, persisted, metered, and fed into the Phase 11 evaluation; honestly measured to have zero effect on the current sample given the model's near-chance score distribution) |
+| 16 — Device/IP-novelty features + retrain (beyond the original roadmap) | IMPLEMENTED — see § Phase 16 detail below (real `digital_events` matching, leakage-safe, unit-tested; honestly measured **not** to improve the model — only 0.027% of transactions had a matching digital session) |
 
 ## Completed
 
@@ -98,7 +108,8 @@ exactly why this project reports it as its own line rather than only the aggrega
   Orchestration**, **Phase 7 — Policy Engine**, **Phase 8 — Security Hardening**,
   **Phase 9 — Reliability**, **Phase 10 — UI**, **Phase 11 — Evaluation**,
   **Phase 12 — Demo**, **Phase 13 — Observability**, **Phase 14 — Deployment Readiness**, and
-  **Phase 15 — Fraud ML Score Wiring** (beyond the original roadmap), detailed below.
+  **Phase 15 — Fraud ML Score Wiring**, and **Phase 16 — Device/IP-Novelty Features** (both
+  beyond the original roadmap), detailed below.
 
 ### Phase 1 detail
 
@@ -1010,6 +1021,84 @@ next step, independent of which tool eventually trains the model.
   it. Training itself was not moved to Databricks/MLflow in this phase — that remains explicitly
   a separate, independent next step (the user's own stated reasoning for sequencing it this way).
 
+### Phase 16 detail — Device/IP-novelty features from `digital_events`, model retrained (beyond the original roadmap)
+
+Done at the user's own request, after their own independent root-cause analysis of the Phase 4
+near-chance finding converged on the same hypothesis this project's own `src/ml/features.py`
+had already documented (`NOT_IMPLEMENTED_FEATURES`): the real signal, if any exists, likely
+lives in `digital_events` (device/IP novelty), which had only ever been ingested for a 7-day
+window — far narrower than `transactions`' 90-day window.
+
+- **Verified before writing any code**: free memory (~0.97–2.0 GB, fluctuating) and the exact
+  row count a wider `digital_events` window would add. A 90-day window would be 1,244,815 rows
+  (~285 MB raw CSV, likely 1–1.7 GB in pandas) — judged too risky given this machine's
+  documented history of OOM during ingestion. The user chose a **30-day window** (409,786 rows,
+  ~94 MB) as the safer middle ground.
+- Re-ingested `digital_events` for 30 days (`--sample-days 30`, every other table explicitly
+  skipped) — purely additive, the new window fully contains the already-loaded 7-day one.
+  Verified: 409,785 rows, 311,779 with a non-null `customer_id`.
+- `src/ml/dataset.py` gained `load_digital_events`. `src/ml/features.py` gained
+  `_digital_session_features`: matches each transaction to its nearest **strictly-prior**
+  `digital_events` row for the same customer via `pd.merge_asof` (`direction="backward"`,
+  2-hour tolerance) — deliberately **not** the Evidence Engine's own symmetric ±2h window
+  (`src/evidence/graph.py::_device_evidence`), which would leak a few minutes of the future into
+  a training feature. Reuses `src/evidence/device.py::compute_device_fingerprint` (Phase 5) as
+  the single source of truth for the device hash, rather than reimplementing it. Four new
+  columns: `has_digital_session`, `device_novelty`, `ip_novelty`, `digital_country_deviation` —
+  `NaN` (never fabricated) when no session matched or no fingerprint signal existed.
+  `build_features`'s new `digital_events` parameter defaults to `None` (honestly "no data," not
+  "no fraud") so all 3 real call sites (`train.py`, `evaluation/sample.py`, `src/ml/score.py`)
+  were updated while the 5 pre-existing offline tests in `test_ml_features.py` kept passing
+  unmodified. `src/ml/model.py`'s `MODEL_VERSION`/`FEATURE_VERSION` bumped to `v0.2.0`.
+- **Retrained live** (`uv run python -m src.ml.train`, free memory ~1.0 GB at the time — the
+  user explicitly chose to proceed despite this project's own stated 1.5 GB caution threshold;
+  it completed without an OOM, but this was a real, acknowledged risk, not a safe margin).
+- **The honest, measured result: it did not help.** Diagnosed precisely, not assumed:
+
+  | Metric | Value |
+  |---|---|
+  | Transactions inside the `digital_events` window | 126,965 / 370,998 |
+  | ...with a customer who has *any* digital activity | 28,570 |
+  | ...with a session matched within ±2h backward | **99** (0.027%) |
+
+  Only ~29% of customers (33,908 / 116,540) ever appear in `digital_events` at all, averaging
+  ~9 events across the whole 30-day window — sparse enough that the odds of any given
+  transaction landing within 2 hours of one are structurally low. **This is not primarily a
+  window-size problem**: even the full 90-day window would only triple the overlap period,
+  not the per-customer event density — verified by checking that match rate *within* the
+  overlapping window alone is already this low, not diluted by the non-overlapping 60 days.
+  The four new features' SHAP importance came back exactly `0.0` (no learnable signal from 99
+  non-null rows out of 370,998); test ROC-AUC moved from 0.502 to 0.481 — a small, likely
+  noise-driven shift from retraining, not a real degradation either way. Re-running the Phase
+  11 evaluation produced **identical** Hybrid/LLM-only numbers to Phase 15's — the retrained
+  model's scores on the 152-case sample still cluster in a narrow band (0.233–0.568) that never
+  crosses either configured risk threshold.
+- **Conclusion, reported as the user explicitly asked**: the "signal lives in `digital_events`"
+  hypothesis is **not supported by this dataset**, at least via nearest-session device/IP
+  matching — the same kind of honest negative result this project already reported for the
+  original 15 features in Phase 4. The mechanism itself (ingestion, matching, feature
+  computation) is real, leakage-safe, and unit-tested; the data simply doesn't have the
+  density to exploit it. `geographic_distance_km` remains `NOT_IMPLEMENTED` (no lat/long exists
+  for an IP-derived location in this dataset; fabricating a geocoding table was never on the
+  table, matching `CLAUDE.md` § 7).
+- 8 new tests (`tests/unit/test_ml_features.py`) — honest-unknown defaults with no
+  `digital_events` data, novelty correctly flagged/unflagged across repeat sessions, strict
+  leakage safety (a session *after* the transaction, even within the Evidence Engine's own
+  window, must never be used), tolerance-window enforcement, country-deviation in both
+  directions, and missing-IP leaving novelty `NaN` rather than fabricated. 202
+  unit/security/reliability/evaluation/demo/observability tests total (10 Phase 1 + 7 Phase 2 +
+  3 Phase 3 + 5 Phase 4 + 13 Phase 5 + 10 Phase 6 + 20 Phase 7 + 20 Phase 8 + 23 Phase 9 + 18
+  Phase 10 + 20 Phase 11 + 14 Phase 12 + 15 Phase 13 + 16 Phase 15 + 8 Phase 16), all passing.
+- **Not done in this phase, by design or as an honestly-reported gap:** no wider (90-day)
+  `digital_events` window was attempted, since the diagnosis above shows it would not plausibly
+  change the conclusion. No attempt was made to widen the matching tolerance beyond ±2h to
+  force higher coverage — a progressively less defensible assumption about which session
+  "belongs" to a transaction, judged not worth the leakage-safety risk for a speculative gain.
+  `recent_digital_event_count` (a velocity-style feature over digital events, part of the
+  user's own original suggestion list) was not implemented — deferred, not silently dropped,
+  given the same sparsity finding would very likely make it equally uninformative. Training was
+  not moved to Databricks/MLflow (still an independent, separate next step).
+
 ## In progress
 
 Nothing.
@@ -1043,18 +1132,17 @@ Everything under "Status by roadmap phase" marked `NOT_IMPLEMENTED` above.
   honestly there rather than silently assumed present. Reload it with `uv run python -m
   src.ingestion.run --sample-days 90` (omit `--skip-tables` for it) before relying on real
   customer-transcript text for a live case.
-- **The trained fraud model performs near chance** (test ROC-AUC 0.46–0.50) on the currently
-  loaded sample — this is a genuine, verified finding (not a bug; see § Phase 4 detail), not a
-  limitation to silently work around. The Phase 5 Evidence Engine's device derivation (the
-  leading hypothesis for recovering the signal) is now implemented and was tested against real
-  fraud cases, but the two spot-checked cases didn't happen to show a strong device signal
-  either — the fraud model has not been re-trained with device-derived features yet; that
-  integration (feeding Evidence Engine / Device signals back into `src/ml/features.py`) is
-  an open next step, not yet attempted. This same near-chance model's score **is** now
-  consulted at live decision time (Phase 15, `src/ml/score.py`) — that phase wired in the
-  existing model as-is; it did not retrain it, so the near-chance finding above still applies
-  directly to the live score, which is exactly why Phase 15's own re-run of the Phase 11
-  evaluation measured zero effect from wiring it in (§ Phase 15 detail).
+- **The trained fraud model performs near chance** (test ROC-AUC 0.46–0.50, now 0.48 after
+  Phase 16's retrain) on the currently loaded sample — this is a genuine, verified finding (not
+  a bug; see § Phase 4 detail), not a limitation to silently work around. This same near-chance
+  model's score **is** consulted at live decision time (Phase 15, `src/ml/score.py`).
+  **Update (2026-10-03, Phase 16):** the leading hypothesis for recovering the signal — device/
+  IP novelty from `digital_events` — was implemented, unit-tested, and retrained against a
+  30-day window, and **did not help**: only 99 of 370,998 transactions (0.027%) had a matching
+  digital session at all, far too sparse to give the model any learnable signal (SHAP
+  importance `0.0` for all four new features). This is now a closed, honestly-reported
+  investigation, not an open next step — see § Phase 16 detail for the full diagnosis of *why*
+  (customer-level digital-activity sparsity, not window size).
 - **`device_id` is a heuristic proxy, not a true device fingerprint** (`src/evidence/device.py`
   — the dataset has no persistent device-fingerprint column). Known limitations: IP-based
   collisions across customers on shared networks/NAT, and a customer's own IP changing

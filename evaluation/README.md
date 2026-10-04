@@ -47,6 +47,14 @@ model performing near chance. The mechanism itself is real and unit-tested with 
 score (`tests/unit/test_action_risk.py`, `tests/unit/test_authorization.py`); it simply has zero
 measured effect here given this model's actual score distribution.
 
+**Update (2026-10-03, Phase 16):** the model was retrained with device/IP-novelty features from
+`digital_events` (`xgboost-v0.2.0`), on the hypothesis that this would fix the near-chance
+problem. Re-running this comparison again produced **identical numbers to Phase 15's** — the
+retrained model's scores on this sample still cluster in a narrow band (0.233–0.568) that never
+crosses either threshold. Diagnosed, not assumed: only 99 of 370,998 training transactions
+(0.027%) had a matching digital session at all — too sparse for the new features to carry any
+signal (SHAP importance `0.0`). Full diagnosis: `docs/project-status.md` § Phase 16 detail.
+
 **A real, non-obvious finding from actually running this**: on the live sample, "LLM only" and
 "Hybrid" produce **identical** precision/recall and flagged sets. This isn't a bug — the Policy
 Engine never changes *which* action gets proposed, only *whether human approval is
@@ -58,7 +66,7 @@ data, not manufactured for the demo, and exactly the scenario
 `tests/unit/test_evaluation.py::test_hybrid_outcome_forces_human_approval_llm_alone_would_not_require`
 regression-tests directly.
 
-## Verified result (2026-09-27; Hybrid row re-verified unchanged 2026-10-01, Phase 15)
+## Verified result (2026-09-27; re-verified unchanged 2026-10-01 Phase 15, and again 2026-10-03 Phase 16 after retraining)
 
 Full run against the live database, `--legit-sample-size 120` (default), sample size 152
 (32 fraud + 120 legit, in-window):

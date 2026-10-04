@@ -140,6 +140,159 @@ def test_response_code_zero_is_treated_as_success() -> None:
     assert feats.iloc[0]["auth_failed"] == 0.0
 
 
+def _one_txn(
+    *, transaction_id: str = "T1", customer_id: str = "C1", when: dt.datetime
+) -> pd.DataFrame:
+    return pd.DataFrame(
+        {
+            "transaction_id": [transaction_id],
+            "transaction_date": [when],
+            "process_date": [when.date()],
+            "customer_id": [customer_id],
+            "amount": [100.0],
+            "amount_usd": [100.0],
+            "currency": ["USD"],
+            "channel": ["Mobile"],
+            "merchant_name": ["M1"],
+            "merchant_category": ["Food"],
+            "transaction_country": ["Mexico"],
+            "transaction_city": ["CDMX"],
+            "transaction_status": ["Approved"],
+            "response_code": ["0"],
+            "is_fraud": [False],
+            "transaction_type": ["Purchase"],
+            "latitude": [None],
+            "longitude": [None],
+        }
+    )
+
+
+def _digital_event(
+    *,
+    event_id: str,
+    customer_id: str = "C1",
+    when: dt.datetime,
+    ip_address: str | None = "1.2.3.4",
+    ip_country: str | None = "Mexico",
+    platform: str = "iOS",
+    browser: str = "Safari",
+) -> dict:
+    return {
+        "event_id": event_id,
+        "event_date": when,
+        "customer_id": customer_id,
+        "session_id": f"S-{event_id}",
+        "platform": platform,
+        "browser": browser,
+        "ip_address": ip_address,
+        "ip_country": ip_country,
+        "ip_city": "CDMX",
+    }
+
+
+def test_no_digital_events_data_gives_honest_unknown_not_fabricated() -> None:
+    """Phase 16 (docs/project-status.md § Phase 16 detail): digital_events
+    defaults to None (an offline/test context, or a fixture with none) --
+    has_digital_session is a real, knowable 0.0 ("none found in what we
+    have"), but novelty/country-deviation are genuinely undefined without a
+    session, so they must be NaN, never a fabricated 0/1."""
+    txn = _one_txn(when=dt.datetime(2026, 1, 1, 10, 0))
+    feats = build_features(txn, _customers(), _no_complaints(), _no_extra_rates())
+    row = feats.iloc[0]
+    assert row["has_digital_session"] == 0.0
+    assert np.isnan(row["device_novelty"])
+    assert np.isnan(row["ip_novelty"])
+    assert np.isnan(row["digital_country_deviation"])
+
+
+def test_first_digital_session_for_a_device_is_flagged_novel() -> None:
+    txn = _one_txn(when=dt.datetime(2026, 1, 1, 10, 0))
+    digital_events = pd.DataFrame(
+        [_digital_event(event_id="E1", when=dt.datetime(2026, 1, 1, 9, 0))]
+    )
+    feats = build_features(txn, _customers(), _no_complaints(), _no_extra_rates(), digital_events)
+    row = feats.iloc[0]
+    assert row["has_digital_session"] == 1.0
+    assert row["device_novelty"] == 1.0
+    assert row["ip_novelty"] == 1.0
+
+
+def test_device_seen_before_for_this_customer_is_not_novel() -> None:
+    """Two prior sessions on the same device/IP for this customer, then the
+    transaction matches the second (nearest) one — the device is not new,
+    because it already appeared once before that session."""
+    txn = _one_txn(when=dt.datetime(2026, 1, 3, 10, 0))
+    digital_events = pd.DataFrame(
+        [
+            _digital_event(event_id="E1", when=dt.datetime(2026, 1, 1, 9, 0)),
+            _digital_event(event_id="E2", when=dt.datetime(2026, 1, 3, 9, 30)),
+        ]
+    )
+    feats = build_features(txn, _customers(), _no_complaints(), _no_extra_rates(), digital_events)
+    row = feats.iloc[0]
+    assert row["has_digital_session"] == 1.0
+    assert row["device_novelty"] == 0.0
+    assert row["ip_novelty"] == 0.0
+
+
+def test_digital_session_strictly_after_the_transaction_is_never_used() -> None:
+    """Leakage safety: a digital_events row 30 minutes AFTER the
+    transaction must never be matched, even though it's well within the
+    Evidence Engine's own symmetric +/-2h window (src/evidence/graph.py) --
+    this module is backward-only on purpose (see its own docstring)."""
+    txn = _one_txn(when=dt.datetime(2026, 1, 1, 10, 0))
+    digital_events = pd.DataFrame(
+        [_digital_event(event_id="E1", when=dt.datetime(2026, 1, 1, 10, 30))]
+    )
+    feats = build_features(txn, _customers(), _no_complaints(), _no_extra_rates(), digital_events)
+    row = feats.iloc[0]
+    assert row["has_digital_session"] == 0.0
+    assert np.isnan(row["device_novelty"])
+
+
+def test_digital_session_beyond_the_tolerance_window_is_not_matched() -> None:
+    txn = _one_txn(when=dt.datetime(2026, 1, 1, 10, 0))
+    digital_events = pd.DataFrame(
+        [_digital_event(event_id="E1", when=dt.datetime(2026, 1, 1, 7, 0))]  # 3h before
+    )
+    feats = build_features(txn, _customers(), _no_complaints(), _no_extra_rates(), digital_events)
+    assert feats.iloc[0]["has_digital_session"] == 0.0
+
+
+def test_digital_country_deviation_flags_a_mismatched_session_country() -> None:
+    txn = _one_txn(when=dt.datetime(2026, 1, 1, 10, 0))  # customer C1 is registered in Mexico
+    digital_events = pd.DataFrame(
+        [
+            _digital_event(
+                event_id="E1", when=dt.datetime(2026, 1, 1, 9, 0), ip_country="Argentina"
+            )
+        ]
+    )
+    feats = build_features(txn, _customers(), _no_complaints(), _no_extra_rates(), digital_events)
+    assert feats.iloc[0]["digital_country_deviation"] == 1.0
+
+
+def test_digital_country_deviation_is_zero_when_countries_match() -> None:
+    txn = _one_txn(when=dt.datetime(2026, 1, 1, 10, 0))
+    digital_events = pd.DataFrame(
+        [_digital_event(event_id="E1", when=dt.datetime(2026, 1, 1, 9, 0), ip_country="Mexico")]
+    )
+    feats = build_features(txn, _customers(), _no_complaints(), _no_extra_rates(), digital_events)
+    assert feats.iloc[0]["digital_country_deviation"] == 0.0
+
+
+def test_missing_ip_address_leaves_novelty_unknown_not_fabricated() -> None:
+    txn = _one_txn(when=dt.datetime(2026, 1, 1, 10, 0))
+    digital_events = pd.DataFrame(
+        [_digital_event(event_id="E1", when=dt.datetime(2026, 1, 1, 9, 0), ip_address=None)]
+    )
+    feats = build_features(txn, _customers(), _no_complaints(), _no_extra_rates(), digital_events)
+    row = feats.iloc[0]
+    assert row["has_digital_session"] == 1.0  # a session was found...
+    assert np.isnan(row["device_novelty"])  # ...but no fingerprint signal to judge novelty from
+    assert np.isnan(row["ip_novelty"])
+
+
 def test_non_usd_amount_is_converted_not_used_raw() -> None:
     """Regression test: a raw COP amount (millions) must never be compared
     directly against a raw USD amount (hundreds) — an earlier version of

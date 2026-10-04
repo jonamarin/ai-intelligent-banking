@@ -14,15 +14,21 @@ call inside, which is Python-level-call-per-group and was measured at ~10
 minutes for 371k rows / 116k customers before this rewrite. The vectorized
 version computes the same statistics in seconds.
 
-Device/IP-novelty and true geographic-distance features are NOT_IMPLEMENTED
-here — they need the Device entity (docs/domain-model.md § Device), which is
-derived from digital_events (not loaded in this ingestion run; Phase 5 owns
-that derivation properly). Listed explicitly in FEATURE_COLUMNS with a note
-rather than silently omitted.
+Device/IP-novelty (Phase 16, docs/project-status.md § Phase 16 detail) match
+each transaction to its nearest **strictly-prior** `digital_events` row for
+the same customer, within a 2-hour tolerance, via `pd.merge_asof` —
+deliberately not the Evidence Engine's own symmetric ±2h window
+(`src/evidence/graph.py::_device_evidence`), which is fine for a
+human-reviewed case but would leak a few minutes of the future into a
+training feature. True geographic-distance remains NOT_IMPLEMENTED — this
+dataset has no lat/long for an IP-derived location, and fabricating a
+geocoding table would violate this project's "never fabricate" rule.
 """
 
 import numpy as np
 import pandas as pd
+
+from src.evidence.device import compute_device_fingerprint
 
 FEATURE_COLUMNS = [
     "amount_usd",
@@ -40,11 +46,20 @@ FEATURE_COLUMNS = [
     "has_geo",
     "channel_encoded",
     "transaction_type_encoded",
+    "has_digital_session",
+    "device_novelty",
+    "ip_novelty",
+    "digital_country_deviation",
 ]
 
 # Explicitly not implemented — documented, not silently dropped. See module
-# docstring for why (needs Phase 5's Device derivation from digital_events).
-NOT_IMPLEMENTED_FEATURES = ["device_novelty", "ip_novelty", "geographic_distance_km"]
+# docstring for why.
+NOT_IMPLEMENTED_FEATURES = ["geographic_distance_km"]
+
+# How far from a transaction's own timestamp to look for "the digital session
+# used for it" — same window src/evidence/graph.py already uses, but backward
+# (strictly prior) only here; see module docstring.
+_DIGITAL_SESSION_TOLERANCE = pd.Timedelta(hours=2)
 
 _CARD_PRESENT_CHANNELS = {"POS", "ATM", "Branch"}
 _SUCCESS_RESPONSE_CODES = {"0", "00"}
@@ -102,6 +117,7 @@ def build_features(
     customers: pd.DataFrame,
     complaints: pd.DataFrame,
     exchange_rates: pd.DataFrame,
+    digital_events: pd.DataFrame | None = None,
 ) -> pd.DataFrame:
     """Returns one row per transaction_id with FEATURE_COLUMNS plus
     transaction_id, customer_id, transaction_date, and the label is_fraud —
@@ -162,6 +178,12 @@ def build_features(
 
     df["cust_complaint_count_prior"] = _prior_complaint_counts(df, complaints)
 
+    # Phase 16 (docs/project-status.md § Phase 16 detail): device/IP novelty
+    # from digital_events, matched via merge_asof -- df is already sorted
+    # ascending by transaction_date right above, which merge_asof requires.
+    digital_features = _digital_session_features(df, digital_events)
+    df[digital_features.columns] = digital_features
+
     df["card_present"] = df["channel"].isin(_CARD_PRESENT_CHANNELS).astype(float)
     response_ok = df["response_code"].fillna("0").isin(_SUCCESS_RESPONSE_CODES)
     df["auth_failed"] = ((df["transaction_status"] == "Declined") | ~response_ok).astype(float)
@@ -208,3 +230,89 @@ def _prior_complaint_counts(transactions: pd.DataFrame, complaints: pd.DataFrame
     # but a complaint at the exact same instant would double count; that's
     # an acceptable, documented edge case at datetime precision.
     return transactions["transaction_id"].map(result).astype(float)
+
+
+def _digital_session_features(
+    transactions: pd.DataFrame, digital_events: pd.DataFrame | None
+) -> pd.DataFrame:
+    """Matches each transaction to its nearest **strictly-prior**
+    `digital_events` row for the same customer, within
+    `_DIGITAL_SESSION_TOLERANCE`, via `pd.merge_asof` (`direction="backward"`
+    — see module docstring for why this differs from the Evidence Engine's
+    own symmetric ±2h window). `transactions` must already be sorted
+    ascending by `transaction_date` with a fresh `RangeIndex` — callers pass
+    the same sort/reset_index `build_features` already does for the
+    merchant-risk feature, immediately before calling this.
+
+    `digital_events=None` or empty (no data loaded — an offline/test
+    context, or a fixture with none) returns `has_digital_session=0.0` and
+    the other three columns `NaN` for every row: honestly "no session
+    found," never a fabricated value.
+    """
+    empty = pd.DataFrame(
+        {
+            "has_digital_session": 0.0,
+            "device_novelty": np.nan,
+            "ip_novelty": np.nan,
+            "digital_country_deviation": np.nan,
+        },
+        index=transactions.index,
+    )
+    if digital_events is None or digital_events.empty:
+        return empty
+
+    de = digital_events.copy()
+    de["event_date"] = pd.to_datetime(de["event_date"])
+    de = de.dropna(subset=["customer_id"]).sort_values("event_date").reset_index(drop=True)
+    if de.empty:
+        return empty
+
+    de["device_id"] = [
+        compute_device_fingerprint(ip, plat, br)
+        for ip, plat, br in zip(de["ip_address"], de["platform"], de["browser"], strict=True)
+    ]
+
+    # "Was this the first time this customer used this device/IP, as of
+    # this very digital_events row (chronologically)?" — computed once per
+    # digital event. merge_asof below only ever attaches a row strictly
+    # before the transaction, so carrying this flag through stays
+    # leakage-safe (the transaction never sees a novelty flag derived from
+    # anything at or after its own timestamp).
+    has_device = de["device_id"].notna()
+    de["device_novelty_flag"] = np.nan
+    de.loc[has_device, "device_novelty_flag"] = (
+        de.loc[has_device].groupby(["customer_id", "device_id"]).cumcount() == 0
+    ).astype(float)
+
+    has_ip = de["ip_address"].notna() & (de["ip_address"] != "")
+    de["ip_novelty_flag"] = np.nan
+    de.loc[has_ip, "ip_novelty_flag"] = (
+        de.loc[has_ip].groupby(["customer_id", "ip_address"]).cumcount() == 0
+    ).astype(float)
+
+    right = de[
+        ["customer_id", "event_date", "ip_country", "device_novelty_flag", "ip_novelty_flag"]
+    ]
+    merged = pd.merge_asof(
+        transactions[["customer_id", "transaction_date"]],
+        right,
+        left_on="transaction_date",
+        right_on="event_date",
+        by="customer_id",
+        direction="backward",
+        tolerance=_DIGITAL_SESSION_TOLERANCE,
+    )
+
+    result = empty.copy()
+    result["has_digital_session"] = merged["event_date"].notna().astype(float).to_numpy()
+    result["device_novelty"] = merged["device_novelty_flag"].to_numpy()
+    result["ip_novelty"] = merged["ip_novelty_flag"].to_numpy()
+
+    has_country_signal = merged["ip_country"].notna().to_numpy() & transactions[
+        "country"
+    ].notna().to_numpy()
+    country_dev = (merged["ip_country"].to_numpy() != transactions["country"].to_numpy()).astype(
+        float
+    )
+    result["digital_country_deviation"] = np.where(has_country_signal, country_dev, np.nan)
+    return result

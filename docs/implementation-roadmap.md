@@ -415,3 +415,43 @@ a deviation found along the way: `docs/demo-script.md`'s original Scenario F spe
 fallback to the logistic-regression baseline on model failure; the actual implementation
 degrades straight to no live score at all — noted, not silently implemented differently.
 16 new tests, 194 total. Full detail: `docs/project-status.md` § Phase 15 detail.
+
+## Phase 16 — Device/IP-Novelty Features from `digital_events` (beyond the original roadmap)
+
+`IMPLEMENTED` (see `docs/project-status.md` § Phase 16 detail). Not one of the original 14
+competition-roadmap phases — added at the user's own request after their independent root-cause
+analysis of the Phase 4 near-chance finding converged on the same hypothesis this project's own
+`src/ml/features.py` had already documented (`NOT_IMPLEMENTED_FEATURES`).
+
+**Objective:** test whether device/IP novelty signals from `digital_events` recover the fraud
+signal the current 15 features don't carry. **Scope:** widen the `digital_events` ingestion
+window (7 → 30 days, a deliberately smaller step than the full 90 days after a memory-risk
+assessment), add leakage-safe device/IP-novelty/country-deviation features via `pd.merge_asof`,
+retrain, and re-evaluate. **Dependencies:** Phase 4 (the training pipeline), Phase 5 (the device
+fingerprint function, reused not reimplemented), Phase 15 (the live-scoring cache that
+automatically picks up the retrained model). **Tests:** leakage safety (a session after the
+transaction must never be used, even within the Evidence Engine's own wider window), novelty
+correctness across repeat sessions, honest `NaN` defaults when no data/signal exists.
+**Security:** none — no new trust boundary. **Exit criteria:** the retrained model's metrics
+and feature importances are measured and compared against the Phase 4 baseline, honestly,
+whichever way the comparison goes. **Risks:** the hypothesis might not pan out — stated in the
+plan before implementation, not added after the fact to excuse a disappointing result.
+
+**Delivered as:** `src/ml/dataset.py::load_digital_events`, `src/ml/features.py::
+_digital_session_features` (four new columns: `has_digital_session`, `device_novelty`,
+`ip_novelty`, `digital_country_deviation`), `MODEL_VERSION`/`FEATURE_VERSION` bumped to
+`v0.2.0`, all 3 real call sites updated (`train.py`, `evaluation/sample.py`, `src/ml/score.py`).
+**Exit criteria met — and the honest, measured result is negative:** re-ingesting
+`digital_events` for 30 days (409,785 rows) and retraining found that only **99 of 370,998
+transactions (0.027%)** matched a digital session within the leakage-safe ±2h backward window —
+only ~29% of customers ever appear in `digital_events` at all, averaging ~9 events across the
+whole window, far too sparse for the model to learn anything from (SHAP importance `0.0` for
+all four new features; test ROC-AUC moved from 0.502 to 0.481, a small shift attributable to
+retraining noise, not a real effect). Diagnosed as a structural sparsity issue, not a
+window-size one — a wider 90-day window would not plausibly change this conclusion, verified by
+checking the match rate *within* the already-overlapping window alone. Re-running the Phase 11
+evaluation produced numbers identical to Phase 15's. **Conclusion, reported exactly as the user
+asked:** the "signal lives in `digital_events`" hypothesis is not supported by this dataset via
+this approach — a closed, honestly-reported negative result, the same rigor this project
+already applied to the original 15 features in Phase 4. 8 new tests, 202 total. Full detail:
+`docs/project-status.md` § Phase 16 detail.

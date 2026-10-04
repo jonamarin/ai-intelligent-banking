@@ -115,7 +115,7 @@ src/                           ← application code (Phase 1+, docs/project-stat
   api/                         ← FastAPI app, health check, error handling, case JSON API, server-rendered UI (implemented, Phase 1, 10)
   models/                      ← SQLAlchemy models + Pydantic schemas (implemented, Phase 2-3)
   ingestion/                    ← CSV -> Postgres loader + data-quality report (implemented, Phase 3)
-  ml/                           ← fraud model: features, baseline, XGBoost, evaluation (implemented, Phase 4); score.py: cached live scoring (implemented, Phase 15)
+  ml/                           ← fraud model: features, baseline, XGBoost, evaluation (implemented, Phase 4); score.py: cached live scoring (implemented, Phase 15); device/IP-novelty features from digital_events (implemented, Phase 16 — negative result)
   evidence/                     ← device derivation, evidence graph, contradiction detection (implemented, Phase 5)
   agents/                       ← structured LLM output schemas + LLMClient/MockLLMClient (implemented, Phase 6)
   retrieval/                    ← TF-IDF policy RAG + synthetic Spanish policy docs (implemented, Phase 6)
@@ -129,7 +129,7 @@ alembic/                       ← migrations (implemented, Phase 2-3, 9) — en
                                   src.config.settings + src.models.Base.metadata
 infrastructure/                 ← Prometheus scrape/alert config + Grafana provisioning (Phase 13) —
                                   optional docker-compose `monitoring` profile, `make monitoring-up`
-tests/unit/                    ← 146 passing tests (10 Phase 1 + 7 Phase 2 + 3 Phase 3 + 5 Phase 4 + 13 Phase 5 + 10 Phase 6 + 20 Phase 7 − 4 superseded, moved to tests/security/, + 18 Phase 10 API tests + 20 Phase 11 evaluation tests + 14 Phase 12 demo tests + 15 Phase 13 metrics/tracing tests + 15 Phase 15 fraud-score-wiring tests)
+tests/unit/                    ← 154 passing tests (10 Phase 1 + 7 Phase 2 + 3 Phase 3 + 5 Phase 4 + 13 Phase 5 + 10 Phase 6 + 20 Phase 7 − 4 superseded, moved to tests/security/, + 18 Phase 10 API tests + 20 Phase 11 evaluation tests + 14 Phase 12 demo tests + 15 Phase 13 metrics/tracing tests + 15 Phase 15 fraud-score-wiring tests + 8 Phase 16 digital-session-feature tests)
 tests/security/                ← 24 passing tests (Phase 8: redaction + red-team/adversarial suite)
 tests/reliability/             ← 24 passing tests (Phase 9: retry/fallback, idempotency, DB-timeout; + 1 Phase 15 model_degraded test)
 data/models/                   ← trained model artifacts (git-ignored — binary)
@@ -148,7 +148,10 @@ per its own scope (`docs/implementation-roadmap.md`) — `docs/final-report.md` 
 `docs/deployment-readiness.md` (the detailed infra/rollback/access-control/retention gap
 analysis); no production infrastructure was created or touched. **Phase 15** (beyond the
 original 14-phase roadmap, `docs/project-status.md` § Phase 15 detail) wired the trained fraud
-ML model's score into live orchestration — `src/ml/score.py`.
+ML model's score into live orchestration — `src/ml/score.py`. **Phase 16** (also beyond the
+original roadmap, `docs/project-status.md` § Phase 16 detail) tested and closed the leading
+hypothesis for the model's near-chance performance (device/IP-novelty features from
+`digital_events`) — the honest result is negative, documented as a finding, not hidden.
 `infrastructure/terraform/` and every deployment mechanism `docs/deployment-readiness.md`
 describes as missing (§ 1–8 of that document) do not exist yet — do not create empty placeholder
 directories for a phase before it actually starts; the existing `src/` subpackages that are
@@ -157,7 +160,10 @@ still just markers document this explicitly in their own docstrings. A `--full` 
 verified recent-date sample) has also not been done — see `src/ingestion/README.md` § Sample vs.
 full mode before attempting it. **The trained fraud model performs near chance on the currently
 loaded sample — a real, verified finding, not a bug** (`docs/project-status.md` § Phase 4
-detail, `src/ml/README.md`). **The Evidence Engine's `device_id` is a documented heuristic
+detail, `src/ml/README.md`). **Phase 16 tested the leading hypothesis for why (device/IP-novelty
+features from `digital_events`) and confirmed it does not explain the gap** — digital-session
+coverage on this dataset is too sparse (0.027% match rate) to carry any signal
+(`docs/project-status.md` § Phase 16 detail). **The Evidence Engine's `device_id` is a documented heuristic
 proxy, not a true device fingerprint** — the dataset has no persistent device identifier
 (`src/evidence/README.md`). Evidence Engine direction/confidence values are illustrative
 heuristics, never approved policy. **Phase 7's Policy Engine (`src/policies/`) now makes every
@@ -262,6 +268,24 @@ model-unavailable half is no longer "not applicable" — it's tested directly) a
 demo-script.md spec for a deviation found along the way: a missing model artifact degrades to
 no live score at all, not a fallback to the logistic-regression baseline as originally
 specified.
+**Phase 16 (beyond the original 14-phase roadmap, `docs/project-status.md` § Phase 16 detail)
+tested the leading hypothesis for *why* the model performs near chance: that the real signal
+lives in `digital_events` (device/IP novelty).** `digital_events` was widened to a 30-day
+window (409,786 rows ingested) and `src/ml/features.py` gained four new leakage-safe features
+(`has_digital_session`, `device_novelty`, `ip_novelty`, `digital_country_deviation`) via a
+strictly-backward `pd.merge_asof` against the nearest prior digital session per customer —
+deliberately narrower than the Evidence Engine's own symmetric ±2h window
+(`src/evidence/graph.py::_device_evidence`), since a training feature must never see the future.
+**The honest result, after actually retraining (`xgboost-v0.2.0`) and re-running the Phase 11
+evaluation: no improvement.** Only 99 of 370,998 transactions (0.027%) matched a digital session
+at all — only ~29% of customers ever appear in `digital_events`, averaging ~9 events across the
+whole 30-day window, far too sparse to learn from. All four new features scored SHAP importance
+`0.0`; test ROC-AUC moved from 0.502 to 0.481 (noise, not a real effect); the Hybrid/Fraud-ML-only
+evaluation rows came back unchanged. Diagnosed directly, not assumed: the match rate *within* the
+already-overlapping window alone was checked, confirming this is a structural sparsity problem
+(most customers simply have no digital footprint in this dataset), not a calendar-window one — so
+a wider window would not plausibly change the conclusion. The "signal lives in `digital_events`"
+hypothesis is closed, documented as a negative finding rather than worked around or hidden.
 
 ## 5. Confirmed technology stack (mostly implemented; a few pieces below remain planned)
 
