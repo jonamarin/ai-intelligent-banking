@@ -68,6 +68,15 @@ approval but the Policy Engine did) is a separate metric,
 `policy_engine_override_rate` — invisible in the headline precision/recall numbers, which is
 exactly why this project reports it as its own line rather than only the aggregate comparison.
 
+**Update (2026-10-05):** the user decided not to pursue the Databricks/MLflow migration floated
+during the Phase 15 planning discussion, given the submission deadline. This is a scope
+decision, not a dropped task — it was never started (`src/ml/train.py` still runs locally, as
+it has since Phase 4), and Phase 15/16's own "not done" notes already said as much. Treated here
+as closed, not an open next step, so this document doesn't read as promising follow-up work that
+isn't going to happen. The repository is otherwise in a submittable state as of this update:
+working tree clean, `896e18f` is `HEAD`, 202/202 tests passing, `ruff`/`mypy` clean
+(§ Last validation above).
+
 ## Status by roadmap phase (`docs/implementation-roadmap.md`)
 
 | Phase | State |
@@ -1155,6 +1164,10 @@ Everything under "Status by roadmap phase" marked `NOT_IMPLEMENTED` above.
 - The Portuguese-language requirement from `project_presentation.txt` has no data to back it;
   this project implements Spanish only and reports the gap rather than fabricating coverage
   (`docs/product-requirements.md` § 13 — decided, not a bug).
+- **Databricks/MLflow was never adopted.** It was floated during the Phase 15 planning
+  discussion as a way to demonstrate cloud-tooling expertise per the competition brief, but the
+  user decided against it given the submission deadline (2026-10-05) — `src/ml/train.py` runs
+  locally today exactly as it has since Phase 4. A closed scope decision, not an unfinished task.
 
 ## Blockers
 
